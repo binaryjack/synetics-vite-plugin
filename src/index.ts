@@ -118,7 +118,7 @@ function pulsarPlugin(options: PulsarPluginOptions = {}): Plugin {
         } else {
           // Always reload in dev, or first load in production
           const transformerModule = await import('@pulsar-framework/transformer');
-          cachedTransformer = transformerModule;
+        cachedTransformer = transformerModule.default;
         }
 
         let outputCode: string;
