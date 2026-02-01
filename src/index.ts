@@ -24,6 +24,8 @@ export interface PulsarPluginOptions {
   enableCache?: boolean;
 }
 
+const PLUGIN_VERSION = Date.now(); // Version changes on every server restart
+
 const compilerOptions: ts.CompilerOptions = {
   target: ts.ScriptTarget.ESNext,
   module: ts.ModuleKind.ESNext,
@@ -41,6 +43,8 @@ function pulsarPlugin(options: PulsarPluginOptions = {}): Plugin {
   let cachedProgram: ts.Program | null = null;
   let transformedFiles = new Set<string>();
   let isDevMode = true;
+  let lastTransformerLoad = 0;
+  const RELOAD_INTERVAL = 1000; // Reload transformer every second in dev mode
 
   return {
     name: 'pulsar-vite-plugin',
@@ -69,8 +73,12 @@ function pulsarPlugin(options: PulsarPluginOptions = {}): Plugin {
       const startTime = performance.now();
       const fileName = id.split('/').pop();
 
-      // Cache transformer module
-      if (!cachedTransformer) {
+      // In dev mode, don't cache the transformer to always get latest changes
+      // In production, cache for performance
+      if (!isDevMode && cachedTransformer) {
+        // Use cached version in production
+      } else {
+        // Always reload in dev, or first load in production
         const transformerModule = await import('@pulsar-framework/transformer');
         cachedTransformer = transformerModule.default;
       }
@@ -84,11 +92,9 @@ function pulsarPlugin(options: PulsarPluginOptions = {}): Plugin {
         ts.ScriptKind.TSX
       );
 
-      // Reuse the cached program - no need to recreate per file
-      const program = cachedProgram!;
-
-      // Get the transformer factory
-      const transformerFactory = cachedTransformer(program);
+      // Don't pass program - let transformer work without type checking
+      // This avoids issues with incomplete type information in Vite environment
+      const transformerFactory = cachedTransformer();
 
       // Transform the source file
       const result = ts.transform(sourceFile, [transformerFactory]);
@@ -111,7 +117,7 @@ function pulsarPlugin(options: PulsarPluginOptions = {}): Plugin {
       }
 
       return {
-        code: outputCode,
+        code: `/* Pulsar v${PLUGIN_VERSION} */\n${outputCode}`,
         map: null,
       };
     },
