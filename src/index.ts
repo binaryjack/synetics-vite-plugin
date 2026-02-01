@@ -1,9 +1,11 @@
+import * as path from 'path';
 import * as ts from 'typescript';
 import type { HmrContext, ModuleNode, Plugin } from 'vite';
 
 /**
  * Vite plugin for pulsar framework
  * Transforms TSX syntax into direct DOM manipulation using the pulsar transformer
+ * Now with enhanced dependency resolution for component imports
  *
  * @example
  * ```ts
@@ -22,6 +24,18 @@ export interface PulsarPluginOptions {
    * @default false (caching disabled for better HMR)
    */
   enableCache?: boolean;
+
+  /**
+   * Enable enhanced transformer with dependency resolution
+   * @default true
+   */
+  enableDependencyResolution?: boolean;
+
+  /**
+   * Enable debug logging
+   * @default false
+   */
+  debug?: boolean;
 }
 
 const PLUGIN_VERSION = Date.now(); // Version changes on every server restart
@@ -36,11 +50,12 @@ const compilerOptions: ts.CompilerOptions = {
 };
 
 function pulsarPlugin(options: PulsarPluginOptions = {}): Plugin {
-  const { enableCache = false } = options;
+  const { enableCache = false, enableDependencyResolution = true, debug = false } = options;
 
   // Cache transformer module and program
   let cachedTransformer: any = null;
   let cachedProgram: ts.Program | null = null;
+  let projectRoot = '';
   let transformedFiles = new Set<string>();
   let isDevMode = true;
   let lastTransformerLoad = 0;
@@ -52,15 +67,38 @@ function pulsarPlugin(options: PulsarPluginOptions = {}): Plugin {
 
     configResolved(config) {
       isDevMode = config.command === 'serve';
+      projectRoot = config.root;
     },
 
     buildStart() {
-      // Initialize shared program once at build start
+      // Create a more comprehensive program for the project
       if (!cachedProgram) {
-        const host = ts.createCompilerHost(compilerOptions);
+        const configPath = ts.findConfigFile(projectRoot, ts.sys.fileExists, 'tsconfig.json');
 
-        // Create a lightweight program with minimal file set
-        cachedProgram = ts.createProgram([], compilerOptions, host);
+        if (configPath) {
+          const configFile = ts.readConfigFile(configPath, ts.sys.readFile);
+          const parsedConfig = ts.parseJsonConfigFileContent(
+            configFile.config,
+            ts.sys,
+            path.dirname(configPath)
+          );
+
+          cachedProgram = ts.createProgram(parsedConfig.fileNames, parsedConfig.options);
+
+          if (debug) {
+            console.log(
+              `[pulsar] Created TypeScript program with ${parsedConfig.fileNames.length} files`
+            );
+          }
+        } else {
+          // Fallback to simple program
+          const host = ts.createCompilerHost(compilerOptions);
+          cachedProgram = ts.createProgram([], compilerOptions, host);
+
+          if (debug) {
+            console.log('[pulsar] Created fallback TypeScript program');
+          }
+        }
       }
     },
 
@@ -73,53 +111,95 @@ function pulsarPlugin(options: PulsarPluginOptions = {}): Plugin {
       const startTime = performance.now();
       const fileName = id.split('/').pop();
 
-      // In dev mode, don't cache the transformer to always get latest changes
-      // In production, cache for performance
-      if (!isDevMode && cachedTransformer) {
-        // Use cached version in production
-      } else {
-        // Always reload in dev, or first load in production
-        const transformerModule = await import('@pulsar-framework/transformer');
-        cachedTransformer = transformerModule.default;
+      try {
+        // In dev mode, don't cache the transformer to always get latest changes
+        if (!isDevMode && cachedTransformer) {
+          // Use cached version in production
+        } else {
+          // Always reload in dev, or first load in production
+          const transformerModule = await import('@pulsar-framework/transformer');
+          cachedTransformer = transformerModule;
+        }
+
+        let outputCode: string;
+        let dependencies: string[] = [];
+
+        if (enableDependencyResolution && cachedProgram) {
+          // Use enhanced transformer with dependency resolution
+          try {
+            const result = await cachedTransformer.enhancedTransform(code, id, {
+              program: cachedProgram,
+              rootDir: projectRoot,
+              debug: debug && isDevMode,
+            });
+
+            outputCode = result.code;
+            dependencies = result.dependencies;
+
+            if (debug && dependencies.length > 0) {
+              console.log(`[pulsar] ${fileName} depends on: ${dependencies.join(', ')}`);
+            }
+          } catch (error) {
+            if (debug) {
+              console.warn(
+                `[pulsar] Enhanced transform failed for ${fileName}, falling back to single-file:`,
+                error
+              );
+            }
+
+            // Fall back to single-file transformer
+            const sourceFile = ts.createSourceFile(
+              id,
+              code,
+              ts.ScriptTarget.ESNext,
+              true,
+              ts.ScriptKind.TSX
+            );
+            const transformerFactory = cachedTransformer.default();
+            const result = ts.transform(sourceFile, [transformerFactory]);
+            const transformedFile = result.transformed[0];
+            outputCode = ts.createPrinter().printFile(transformedFile);
+            result.dispose();
+          }
+        } else {
+          // Use single-file transformer (backward compatibility)
+          const sourceFile = ts.createSourceFile(
+            id,
+            code,
+            ts.ScriptTarget.ESNext,
+            true,
+            ts.ScriptKind.TSX
+          );
+          const transformerFactory = cachedTransformer.default();
+          const result = ts.transform(sourceFile, [transformerFactory]);
+          const transformedFile = result.transformed[0];
+          outputCode = ts.createPrinter().printFile(transformedFile);
+          result.dispose();
+        }
+
+        const endTime = performance.now();
+        const duration = (endTime - startTime).toFixed(2);
+
+        if (isDevMode || debug) {
+          const status = transformedFiles.has(id) ? 'cached' : 'fresh';
+          const depInfo = dependencies.length > 0 ? ` [${dependencies.length} deps]` : '';
+          transformedFiles.add(id);
+          console.log(`[pulsar] ⚡ ${fileName} transformed in ${duration}ms (${status})${depInfo}`);
+        }
+
+        return {
+          code: `/* Pulsar v${PLUGIN_VERSION} */\n${outputCode}`,
+          map: null,
+        };
+      } catch (error) {
+        console.error(`[pulsar] Error transforming ${fileName}:`, error);
+
+        // Return original code as fallback
+        return {
+          code: `/* Pulsar v${PLUGIN_VERSION} - Transform failed, returning original */\n${code}`,
+          map: null,
+        };
       }
-
-      // Create source file for this specific transformation
-      const sourceFile = ts.createSourceFile(
-        id,
-        code,
-        ts.ScriptTarget.ESNext,
-        true,
-        ts.ScriptKind.TSX
-      );
-
-      // Don't pass program - let transformer work without type checking
-      // This avoids issues with incomplete type information in Vite environment
-      const transformerFactory = cachedTransformer();
-
-      // Transform the source file
-      const result = ts.transform(sourceFile, [transformerFactory]);
-      const transformedFile = result.transformed[0];
-
-      // Print the transformed file
-      const printer = ts.createPrinter();
-      const outputCode = printer.printFile(transformedFile);
-
-      // Clean up
-      result.dispose();
-
-      const endTime = performance.now();
-      const duration = (endTime - startTime).toFixed(2);
-
-      if (isDevMode) {
-        const status = transformedFiles.has(id) ? 'cached' : 'fresh';
-        transformedFiles.add(id);
-        console.log(`[pulsar] ⚡ ${fileName} transformed in ${duration}ms (${status})`);
-      }
-
-      return {
-        code: `/* Pulsar v${PLUGIN_VERSION} */\n${outputCode}`,
-        map: null,
-      };
     },
 
     handleHotUpdate(ctx: HmrContext) {
