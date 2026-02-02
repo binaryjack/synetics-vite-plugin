@@ -103,6 +103,14 @@ function pulsarPlugin(options: PulsarPluginOptions = {}): Plugin {
     },
 
     async transform(code: string, id: string) {
+      // Debug log for all files passed to transform hook
+      if (debug) {
+        const fileName = id.split('/').pop() || id.split('\\').pop() || id;
+        console.log(
+          `[pulsar] transform() called for: ${fileName} (${id.endsWith('.tsx') ? 'WILL TRANSFORM' : 'SKIP'})`
+        );
+      }
+
       // Only transform .tsx files
       if (!id.endsWith('.tsx')) {
         return null;
@@ -118,7 +126,7 @@ function pulsarPlugin(options: PulsarPluginOptions = {}): Plugin {
         } else {
           // Always reload in dev, or first load in production
           const transformerModule = await import('@pulsar-framework/transformer');
-          cachedTransformer = transformerModule.default;
+          cachedTransformer = transformerModule;
         }
 
         let outputCode: string;
