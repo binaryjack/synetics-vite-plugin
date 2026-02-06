@@ -3,7 +3,11 @@ import type { HmrContext, ModuleNode, Plugin } from 'vite';
 /**
  * Transform PSR file to TypeScript
  */
-async function transformPSRFile(code: string, id: string, debug: boolean): Promise<{ code: string; map: null } | null> {
+async function transformPSRFile(
+  code: string,
+  id: string,
+  debug: boolean
+): Promise<{ code: string; map: null } | null> {
   const startTime = performance.now();
   const fileName = id.split('/').pop();
 
@@ -32,10 +36,10 @@ async function transformPSRFile(code: string, id: string, debug: boolean): Promi
     const endTime = performance.now();
     const duration = (endTime - startTime).toFixed(2);
 
-    if (debug || result.diagnostics.some(d => d.type === 'error')) {
+    if (debug || result.diagnostics.some((d) => d.type === 'error')) {
       console.log(`[pulsar] ⚡ PSR: ${fileName} transformed in ${duration}ms`);
       if (result.diagnostics.length > 0) {
-        result.diagnostics.forEach(diag => {
+        result.diagnostics.forEach((diag) => {
           const level = diag.type === 'error' ? '❌' : diag.type === 'warning' ? '⚠️' : 'ℹ️';
           console.log(`[pulsar]   ${level} ${diag.phase}: ${diag.message}`);
         });
