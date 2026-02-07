@@ -31,7 +31,7 @@ async function transformPSRFile(
       debugLogger: debug ? { enabled: true, console: true, minLevel: 'info' } : undefined,
     });
 
-    const result = pipeline.transform(code);
+    const result = await pipeline.transform(code);
 
     const endTime = performance.now();
     const duration = (endTime - startTime).toFixed(2);
