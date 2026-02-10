@@ -11,6 +11,12 @@ async function transformPSRFile(
   const startTime = performance.now();
   const fileName = id.split('/').pop();
 
+  if (debug) {
+    console.log(`\n[pulsar] ========== TRANSFORMATION START: ${fileName} ==========`);
+    console.log(`[pulsar] File path: ${id}`);
+    console.log(`[pulsar] Input length: ${code.length} chars`);
+  }
+
   try {
     // PREPROCESSING: Remove TypeScript-only syntax that PSR parser doesn't handle yet
     // 1. Remove "type" keyword from imports: import { type Foo } => import { Foo }
@@ -21,7 +27,10 @@ async function transformPSRFile(
       /import\s+type\s+{[^}]+}\s+from\s+['"][^'"]+['"]\s*;?\s*/g,
       ''
     );
-
+    if (debug) {
+      console.log(`[pulsar] Preprocessing complete`);
+      console.log(`[pulsar] Preprocessed length: ${preprocessedCode.length} chars`);
+    }
     // Import the pipeline from transformer
     const transformerModule = await import('@pulsar-framework/transformer');
     const { createPipeline } = transformerModule;
@@ -34,17 +43,42 @@ async function transformPSRFile(
       };
     }
 
+    if (debug) {
+      console.log(`[pulsar] Creating transformation pipeline...`);
+    }
+
     // Create pipeline and transform
     const pipeline = createPipeline({
       filePath: id,
       debug: debug,
-      debugLogger: debug ? { enabled: true, console: true, minLevel: 'info' } : undefined,
+      debugLogger: debug ? { enabled: true, console: true, minLevel: 'debug' } : undefined,
     });
+
+    if (debug) {
+      console.log(`[pulsar] Running transformation pipeline...`);
+    }
 
     const result = await pipeline.transform(preprocessedCode);
 
     const endTime = performance.now();
     const duration = (endTime - startTime).toFixed(2);
+
+    if (debug) {
+      console.log(`[pulsar] Transformation complete in ${duration}ms`);
+      console.log(`[pulsar] Output length: ${result.code.length} chars`);
+      console.log(`[pulsar] Diagnostic count: ${result.diagnostics.length}`);
+
+      // Show metrics if available
+      if (result.metrics) {
+        console.log(`[pulsar] METRICS:`);
+        console.log(`[pulsar]   - Lexer:     ${result.metrics.lexerTime.toFixed(2)}ms`);
+        console.log(`[pulsar]   - Parser:    ${result.metrics.parserTime.toFixed(2)}ms`);
+        console.log(`[pulsar]   - Analyzer:  ${result.metrics.analyzerTime.toFixed(2)}ms`);
+        console.log(`[pulsar]   - Transform: ${result.metrics.transformTime.toFixed(2)}ms`);
+        console.log(`[pulsar]   - Emitter:   ${result.metrics.emitterTime.toFixed(2)}ms`);
+        console.log(`[pulsar]   - Total:     ${result.metrics.totalTime.toFixed(2)}ms`);
+      }
+    }
 
     // FIX: Debug import transformation issue
     if (debug) {
@@ -53,6 +87,7 @@ async function transformPSRFile(
       console.log(`  Output first 300 chars: ${result.code.substring(0, 300)}...`);
       console.log(`  Has .psr in input: ${/\.psr['"]/.test(preprocessedCode)}`);
       console.log(`  Has .js in output: ${/\.js['"]/.test(result.code)}`);
+      console.log(`[pulsar] ========== TRANSFORMATION END: ${fileName} ==========\n`);
     }
 
     if (debug || result.diagnostics.some((d) => d.type === 'error')) {
@@ -79,7 +114,16 @@ async function transformPSRFile(
       map: null,
     };
   } catch (error) {
-    console.error(`[pulsar] PSR Error transforming ${fileName}:`, error);
+    const duration = (performance.now() - startTime).toFixed(2);
+    console.error(`[pulsar] PSR Error transforming ${fileName} (after ${duration}ms):`, error);
+
+    if (debug && error instanceof Error) {
+      console.error(`[pulsar] Error stack:`, error.stack);
+      console.error(`[pulsar] Error details:`, {
+        message: error.message,
+        name: error.name,
+      });
+    }
 
     // Return original code as fallback
     return {
