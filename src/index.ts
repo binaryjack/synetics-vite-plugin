@@ -394,14 +394,14 @@ if (import.meta.hot) {
 /**
  * Ensures PSR type declarations exist in the project
  * Creates src/types/psr-modules.d.ts if missing
- * 
+ *
  * @remarks
  * This is a fallback mechanism. In most cases, the types from
  * @pulsar-framework/pulsar.dev are automatically available.
  * This function only creates a local file if:
  * 1. The framework types aren't being picked up by TypeScript
  * 2. The user wants a local copy they can customize
- * 
+ *
  * @param projectRoot - Absolute path to project root
  * @param debug - Whether to log debug information
  */
@@ -435,7 +435,9 @@ async function ensurePSRTypeDeclarations(projectRoot: string, debug: boolean): P
       console.log('[pulsar] 💡 This enables TypeScript support for .psr file imports');
 
       if (debug) {
-        console.log('[pulsar] Note: @pulsar-framework/pulsar.dev includes these types automatically.');
+        console.log(
+          '[pulsar] Note: @pulsar-framework/pulsar.dev includes these types automatically.'
+        );
         console.log('[pulsar] This file exists as a fallback or for customization.');
       }
     } catch (error) {
