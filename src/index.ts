@@ -51,7 +51,7 @@ async function transformPSRFile(
     const pipeline = createPipeline({
       filePath: id,
       debug: debug,
-      debugLogger: debug ? { enabled: true, console: true, minLevel: 'debug' } : undefined,
+      useTransformer: true,
     });
 
     if (debug) {
@@ -73,9 +73,7 @@ async function transformPSRFile(
         console.log(`[pulsar] METRICS:`);
         console.log(`[pulsar]   - Lexer:     ${result.metrics.lexerTime.toFixed(2)}ms`);
         console.log(`[pulsar]   - Parser:    ${result.metrics.parserTime.toFixed(2)}ms`);
-        console.log(`[pulsar]   - Analyzer:  ${result.metrics.analyzerTime.toFixed(2)}ms`);
         console.log(`[pulsar]   - Transform: ${result.metrics.transformTime.toFixed(2)}ms`);
-        console.log(`[pulsar]   - Emitter:   ${result.metrics.emitterTime.toFixed(2)}ms`);
         console.log(`[pulsar]   - Total:     ${result.metrics.totalTime.toFixed(2)}ms`);
       }
     }
@@ -100,15 +98,6 @@ async function transformPSRFile(
       }
     }
 
-    // FIX #1: Enforce validation - fail if validation errors detected
-    if (result.validation && !result.validation.valid) {
-      const errors = result.validation.issues.filter((i) => i.severity === 'error');
-      if (errors.length > 0) {
-        const errorMessages = errors.map((e) => `  - ${e.message}`).join('\n');
-        throw new Error(`[pulsar] PSR Validation Failed for ${fileName}:\n${errorMessages}`);
-      }
-    }
-
     return {
       code: `/* Pulsar v${Date.now()} PSR */\n${result.code}`,
       map: null,
@@ -125,9 +114,20 @@ async function transformPSRFile(
       });
     }
 
-    // Return original code as fallback
+    // Return valid JS with error message instead of original PSR code
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return {
-      code: `/* Pulsar v${Date.now()} - PSR Transform failed, returning original */\n${code}`,
+      code: `
+/* Pulsar v${Date.now()} - PSR Transform failed */
+console.error('[Pulsar] Transformation failed for ${fileName}');
+console.error('[Pulsar] Error:', ${JSON.stringify(errorMessage)});
+export default function ErrorComponent() {
+  const div = document.createElement('div');
+  div.style.cssText = 'padding: 20px; background: #fee; border: 2px solid #f00; border-radius: 8px; color: #c00;';
+  div.innerHTML = '<h3>⚠️ PSR Transformation Error</h3><p><strong>${fileName}</strong></p><pre style="background:#fff;padding:10px;overflow:auto;">${errorMessage.replace(/'/g, "\\'")}</pre>';
+  return div;
+}
+`,
       map: null,
     };
   }
@@ -386,7 +386,12 @@ if (import.meta.hot) {
 
         // Return modules to update (let Vite handle the HMR)
         return ctx.modules;
- **
+      }
+    },
+  };
+}
+
+/**
  * Ensures PSR type declarations exist in the project
  * Creates src/types/psr-modules.d.ts if missing
  * 
@@ -445,11 +450,6 @@ async function ensurePSRTypeDeclarations(projectRoot: string, debug: boolean): P
       console.warn('[pulsar] Type declaration check failed:', error);
     }
   }
-}
-
-/     }
-    },
-  };
 }
 
 // Named export for convenience
