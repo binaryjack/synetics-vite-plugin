@@ -1,4 +1,4 @@
-import type { HmrContext, ModuleNode, Plugin } from 'vite';
+import type { HmrContext, Plugin } from 'vite';
 
 /**
  * Transform PSR file to TypeScript
@@ -172,13 +172,6 @@ export interface PulsarPluginOptions {
    * Enable dependency resolution
    */
   enableDependencyResolution?: boolean;
-
-  /**
-   * Auto-create PSR type declarations if missing
-   * Creates src/types/psr-modules.d.ts for TypeScript support
-   * @default true
-   */
-  autoCreateTypes?: boolean;
 }
 
 const PLUGIN_VERSION = Date.now(); // Version changes on every server restart
@@ -198,7 +191,7 @@ declare module '*.psr';
 `;
 
 function pulsarPlugin(options: PulsarPluginOptions = {}): Plugin {
-  const { debug = false, autoInjectHMR = true, autoCreateTypes = true } = options;
+  const { debug = false, autoInjectHMR = true } = options;
 
   let projectRoot = '';
   let isDevMode = true;
@@ -211,10 +204,8 @@ function pulsarPlugin(options: PulsarPluginOptions = {}): Plugin {
       isDevMode = config.command === 'serve';
       projectRoot = config.root;
 
-      // Auto-create PSR type declarations if enabled and missing
-      if (autoCreateTypes) {
-        await ensurePSRTypeDeclarations(config.root, debug);
-      }
+      // Note: Type declarations are provided by @pulsar-framework/pulsar.dev
+      // No need to auto-create local files
     },
 
     async resolveId(source: string, importer: string | undefined) {
@@ -372,82 +363,20 @@ if (import.meta.hot) {
     },
 
     handleHotUpdate(ctx: HmrContext) {
-      // When a .psr file changes, invalidate the module to trigger re-transformation
+      // When a .psr file changes, invalidate the module and all its importers
       if (ctx.file.endsWith('.psr')) {
-        // Invalidate the module to trigger re-transformation
-        const module = ctx.modules.find((m: ModuleNode) => m.file === ctx.file);
-        if (module) {
+        console.log(`[pulsar] HMR: PSR file changed - ${ctx.file}`);
+        console.log(`[pulsar] HMR: Found ${ctx.modules.length} modules`);
+
+        // Invalidate all modules in the update context
+        ctx.modules.forEach((module) => {
+          console.log(`[pulsar] HMR: Invalidating module - ${module.url}`);
           ctx.server.moduleGraph.invalidateModule(module);
-        }
+        });
 
-        if (debug) {
-          console.log(`[pulsar] HMR: PSR file changed, invalidating ${ctx.file}`);
-        }
-
-        // Return modules to update (let Vite handle the HMR)
-        return ctx.modules;
- **
- * Ensures PSR type declarations exist in the project
- * Creates src/types/psr-modules.d.ts if missing
- * 
- * @remarks
- * This is a fallback mechanism. In most cases, the types from
- * @pulsar-framework/pulsar.dev are automatically available.
- * This function only creates a local file if:
- * 1. The framework types aren't being picked up by TypeScript
- * 2. The user wants a local copy they can customize
- * 
- * @param projectRoot - Absolute path to project root
- * @param debug - Whether to log debug information
- */
-async function ensurePSRTypeDeclarations(projectRoot: string, debug: boolean): Promise<void> {
-  try {
-    const fs = await import('node:fs/promises');
-    const path = await import('node:path');
-
-    const typesDir = path.resolve(projectRoot, 'src/types');
-    const typesFile = path.resolve(typesDir, 'psr-modules.d.ts');
-
-    // Check if file already exists
-    try {
-      await fs.access(typesFile);
-      if (debug) {
-        console.log('[pulsar] PSR type declarations already exist:', typesFile);
+        // Return undefined to let Vite handle full page reload
+        return undefined;
       }
-      return;
-    } catch {
-      // File doesn't exist, create it
-    }
-
-    // Check if @pulsar-framework/pulsar.dev is installed
-    // If it is, types should be automatic - but we'll create a local copy anyway
-    // as a fallback or for users who want to customize
-    try {
-      await fs.mkdir(typesDir, { recursive: true });
-      await fs.writeFile(typesFile, PSR_TYPE_DECLARATION, 'utf-8');
-
-      console.log('[pulsar] ✅ Created PSR type declarations: src/types/psr-modules.d.ts');
-      console.log('[pulsar] 💡 This enables TypeScript support for .psr file imports');
-
-      if (debug) {
-        console.log('[pulsar] Note: @pulsar-framework/pulsar.dev includes these types automatically.');
-        console.log('[pulsar] This file exists as a fallback or for customization.');
-      }
-    } catch (error) {
-      if (debug) {
-        console.warn('[pulsar] ⚠️ Could not create PSR type declarations:', error);
-        console.warn('[pulsar] TypeScript support will rely on @pulsar-framework/pulsar.dev types');
-      }
-    }
-  } catch (error) {
-    // Silent fail - not critical, types should come from framework package
-    if (debug) {
-      console.warn('[pulsar] Type declaration check failed:', error);
-    }
-  }
-}
-
-/     }
     },
   };
 }
