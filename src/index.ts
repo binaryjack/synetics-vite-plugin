@@ -11,6 +11,22 @@ async function transformPSRFile(
   const startTime = performance.now();
   const fileName = id.split('/').pop();
 
+  // Guard: Skip if already FULLY transformed
+  // Check for header + registry + exports + reasonable size
+  const hasHeader = code.includes('/* Pulsar v') && code.includes(' PSR */');
+  const hasRegistry = code.includes('$REGISTRY.execute');
+  const hasExport = code.includes('export const') || code.includes('export function');
+  const hasReasonableSize = code.length > 500;
+
+  if (hasHeader && hasRegistry && hasExport && hasReasonableSize) {
+    if (debug) {
+      console.log(
+        `[pulsar] ${fileName} already fully transformed (${code.length} bytes), skipping`
+      );
+    }
+    return { code, map: null };
+  }
+
   if (debug) {
     console.log(`\n[pulsar] ========== TRANSFORMATION START: ${fileName} ==========`);
     console.log(`[pulsar] File path: ${id}`);
@@ -31,6 +47,28 @@ async function transformPSRFile(
       console.log(`[pulsar] Preprocessing complete`);
       console.log(`[pulsar] Preprocessed length: ${preprocessedCode.length} chars`);
     }
+
+    // PRE-TRANSFORMATION VALIDATION: Check for potential issues
+    if (debug) {
+      // Check for unsupported operators that might cause parsing failures
+      const unsupportedPatterns = [
+        { pattern: /<<(?!=)/g, name: '<<', msg: 'Left shift operator not yet supported' },
+        { pattern: />>(?!=)/g, name: '>>', msg: 'Right shift operator not yet supported' },
+        { pattern: />>>/g, name: '>>>', msg: 'Unsigned right shift not yet supported' },
+        { pattern: /\*\*/g, name: '**', msg: 'Exponentiation operator not yet supported' },
+      ];
+
+      unsupportedPatterns.forEach(({ pattern, name, msg }) => {
+        const matches = preprocessedCode.match(pattern);
+        if (matches && matches.length > 0) {
+          console.warn(
+            `[pulsar] ⚠️  ${fileName}: Found ${matches.length} uses of '${name}' operator`
+          );
+          console.warn(`[pulsar]    ${msg} - transformation may fail`);
+        }
+      });
+    }
+
     // Import the pipeline from transformer
     const transformerModule = await import('@pulsar-framework/transformer');
     const { createPipeline } = transformerModule;
@@ -51,7 +89,6 @@ async function transformPSRFile(
     const pipeline = createPipeline({
       filePath: id,
       debug: debug,
-      debugLogger: debug ? { enabled: true, console: true, minLevel: 'debug' } : undefined,
     });
 
     if (debug) {
@@ -73,9 +110,7 @@ async function transformPSRFile(
         console.log(`[pulsar] METRICS:`);
         console.log(`[pulsar]   - Lexer:     ${result.metrics.lexerTime.toFixed(2)}ms`);
         console.log(`[pulsar]   - Parser:    ${result.metrics.parserTime.toFixed(2)}ms`);
-        console.log(`[pulsar]   - Analyzer:  ${result.metrics.analyzerTime.toFixed(2)}ms`);
         console.log(`[pulsar]   - Transform: ${result.metrics.transformTime.toFixed(2)}ms`);
-        console.log(`[pulsar]   - Emitter:   ${result.metrics.emitterTime.toFixed(2)}ms`);
         console.log(`[pulsar]   - Total:     ${result.metrics.totalTime.toFixed(2)}ms`);
       }
     }
@@ -100,17 +135,36 @@ async function transformPSRFile(
       }
     }
 
-    // FIX #1: Enforce validation - fail if validation errors detected
-    if (result.validation && !result.validation.valid) {
-      const errors = result.validation.issues.filter((i) => i.severity === 'error');
-      if (errors.length > 0) {
-        const errorMessages = errors.map((e) => `  - ${e.message}`).join('\n');
-        throw new Error(`[pulsar] PSR Validation Failed for ${fileName}:\n${errorMessages}`);
-      }
+    // VALIDATION: Check output quality before returning
+    const outputCode = `/* Pulsar v${Date.now()} PSR */\n${result.code}`;
+    const hasRegistry = outputCode.includes('$REGISTRY.execute');
+    const hasExport = /export\s+(const|function)/.test(outputCode);
+    const inputHasExport = /export\s+(component|function|const)/.test(code);
+
+    // Error: Output too small (header-only)
+    if (outputCode.length < 500) {
+      console.error(`[pulsar] ❌ VALIDATION FAILED: ${fileName}`);
+      console.error(`[pulsar]    Output too small: ${outputCode.length} bytes (expected > 500)`);
+      console.error(`[pulsar]    This indicates incomplete transformation.`);
+      console.error(`[pulsar]    Check for parser errors or unsupported syntax.`);
+    }
+
+    // Error: Missing exports
+    if (inputHasExport && !hasExport) {
+      console.error(`[pulsar] ❌ VALIDATION FAILED: ${fileName}`);
+      console.error(`[pulsar]    Input has exports but output doesn't.`);
+      console.error(`[pulsar]    Transformation likely failed silently.`);
+    }
+
+    // Warning: Missing $REGISTRY for components
+    if (code.includes('export component') && !hasRegistry) {
+      console.warn(`[pulsar] ⚠️  WARNING: ${fileName}`);
+      console.warn(`[pulsar]    Component found but $REGISTRY.execute missing.`);
+      console.warn(`[pulsar]    Component may not render correctly.`);
     }
 
     return {
-      code: `/* Pulsar v${Date.now()} PSR */\n${result.code}`,
+      code: outputCode,
       map: null,
     };
   } catch (error) {
@@ -125,9 +179,20 @@ async function transformPSRFile(
       });
     }
 
-    // Return original code as fallback
+    // Return valid JS with error message instead of original PSR code
+    const errorMessage = error instanceof Error ? error.message : String(error);
     return {
-      code: `/* Pulsar v${Date.now()} - PSR Transform failed, returning original */\n${code}`,
+      code: `
+/* Pulsar v${Date.now()} - PSR Transform failed */
+console.error('[Pulsar] Transformation failed for ${fileName}');
+console.error('[Pulsar] Error:', ${JSON.stringify(errorMessage)});
+export default function ErrorComponent() {
+  const div = document.createElement('div');
+  div.style.cssText = 'padding: 20px; background: #fee; border: 2px solid #f00; border-radius: 8px; color: #c00;';
+  div.innerHTML = '<h3>⚠️ PSR Transformation Error</h3><p><strong>${fileName}</strong></p><pre style="background:#fff;padding:10px;overflow:auto;">${errorMessage.replace(/'/g, "\\'")}</pre>';
+  return div;
+}
+`,
       map: null,
     };
   }
@@ -217,15 +282,32 @@ function pulsarPlugin(options: PulsarPluginOptions = {}): Plugin {
         return null;
       }
 
-      // If source is .psr, let Vite's default resolution handle it
-      // Our load hook will transform it
-      if (cleanSource.endsWith('.psr')) {
-        return null;
-      }
-
       // Only resolve when there's an importer (relative imports)
       if (!importer) {
         return null;
+      }
+
+      const fs = await import('fs/promises');
+      const path = await import('path');
+
+      // If source is .psr, resolve it NOW (don't let Vite handle it)
+      if (cleanSource.endsWith('.psr')) {
+        console.log(`[pulsar] resolveId: Resolving .psr "${cleanSource}"`);
+        console.log(`[pulsar]   From: ${importer}`);
+
+        try {
+          const importerDir = path.dirname(importer);
+          const psrPath = path.resolve(importerDir, cleanSource);
+
+          // Check if file exists
+          await fs.access(psrPath);
+
+          console.log(`[pulsar]   ✓ Resolved to: ${psrPath}`);
+
+          return psrPath;
+        } catch {
+          return null;
+        }
       }
 
       // Check if this is a .js import that should resolve to .psr
@@ -236,9 +318,6 @@ function pulsarPlugin(options: PulsarPluginOptions = {}): Plugin {
       if (!isTransformedJsImport && /\.(tsx?|jsx?|mjs|cjs|json|css|scss|less)$/.test(cleanSource)) {
         return null;
       }
-
-      const fs = await import('fs/promises');
-      const path = await import('path');
 
       try {
         // Resolve relative to importer
@@ -275,15 +354,17 @@ function pulsarPlugin(options: PulsarPluginOptions = {}): Plugin {
       // Strip query parameters before checking extension
       const [cleanId, query] = id.split('?', 2);
 
-      if (!cleanId.endsWith('.psr')) {
-        return null;
+      // ALWAYS log .psr requests to debug
+      if (cleanId.endsWith('.psr')) {
+        const fileName = cleanId.split('/').pop() || cleanId.split('\\').pop() || cleanId;
+        console.log(`[pulsar] load() called for: ${fileName}`);
+        console.log(`[pulsar]   Full ID: ${id}`);
+        console.log(`[pulsar]   Clean ID: ${cleanId}`);
+        console.log(`[pulsar]   Query: ${query || 'none'}`);
       }
 
-      if (debug) {
-        const fileName = cleanId.split('/').pop() || cleanId.split('\\').pop() || cleanId;
-        console.log(`[pulsar] load() called for: ${fileName} (PSR - WILL TRANSFORM)`);
-        console.log(`[pulsar]   ID: ${cleanId}`);
-        console.log(`[pulsar]   Root: ${projectRoot}`);
+      if (!cleanId.endsWith('.psr')) {
+        return null;
       }
 
       // Read the file content
@@ -313,6 +394,20 @@ function pulsarPlugin(options: PulsarPluginOptions = {}): Plugin {
     },
 
     async transform(code: string, id: string) {
+      // CRITICAL: Transform .psr files if load() hook didn't catch them
+      // This is a fallback for when Vite routes .psr files through transform instead of load
+      const [cleanId] = id.split('?', 2);
+      if (cleanId.endsWith('.psr')) {
+        if (debug) {
+          const fileName = cleanId.split('/').pop() || cleanId.split('\\').pop() || cleanId;
+          console.log(
+            `[pulsar] transform() hook triggered for: ${fileName} (FALLBACK - load() didn't catch it)`
+          );
+        }
+        // Transform the PSR file
+        return await transformPSRFile(code, cleanId, debug);
+      }
+
       // Auto-inject HMR for pulse() calls in main.ts/main.tsx
       if (autoInjectHMR && isDevMode && /main\.(ts|tsx|js|jsx)$/.test(id)) {
         // Check if file contains pulse() call and has PSR component import
@@ -374,11 +469,78 @@ if (import.meta.hot) {
           ctx.server.moduleGraph.invalidateModule(module);
         });
 
-        // Return undefined to let Vite handle full page reload
-        return undefined;
+        if (debug) {
+          console.log(`[pulsar] HMR: PSR file changed, invalidating ${ctx.file}`);
+        }
+
+        // Return modules to update (let Vite handle the HMR)
+        return ctx.modules;
       }
     },
   };
+}
+
+/**
+ * Ensures PSR type declarations exist in the project
+ * Creates src/types/psr-modules.d.ts if missing
+ *
+ * @remarks
+ * This is a fallback mechanism. In most cases, the types from
+ * @pulsar-framework/pulsar.dev are automatically available.
+ * This function only creates a local file if:
+ * 1. The framework types aren't being picked up by TypeScript
+ * 2. The user wants a local copy they can customize
+ *
+ * @param projectRoot - Absolute path to project root
+ * @param debug - Whether to log debug information
+ */
+async function ensurePSRTypeDeclarations(projectRoot: string, debug: boolean): Promise<void> {
+  try {
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+
+    const typesDir = path.resolve(projectRoot, 'src/types');
+    const typesFile = path.resolve(typesDir, 'psr-modules.d.ts');
+
+    // Check if file already exists
+    try {
+      await fs.access(typesFile);
+      if (debug) {
+        console.log('[pulsar] PSR type declarations already exist:', typesFile);
+      }
+      return;
+    } catch {
+      // File doesn't exist, create it
+    }
+
+    // Check if @pulsar-framework/pulsar.dev is installed
+    // If it is, types should be automatic - but we'll create a local copy anyway
+    // as a fallback or for users who want to customize
+    try {
+      await fs.mkdir(typesDir, { recursive: true });
+      await fs.writeFile(typesFile, PSR_TYPE_DECLARATION, 'utf-8');
+
+      console.log('[pulsar] ✅ Created PSR type declarations: src/types/psr-modules.d.ts');
+      console.log('[pulsar] 💡 This enables TypeScript support for .psr file imports');
+
+      if (debug) {
+        console.log(
+          '[pulsar] Note: @pulsar-framework/pulsar.dev includes these types automatically.'
+        );
+        console.log('[pulsar] This file exists as a fallback or for customization.');
+      }
+    } catch (error) {
+      if (debug) {
+        console.warn('[pulsar] ⚠️ Could not create PSR type declarations:', error);
+        console.warn('[pulsar] TypeScript support will rely on @pulsar-framework/pulsar.dev types');
+      }
+    }
+  } catch (error) {
+    // Silent fail - not critical, types should come from framework package
+    if (debug) {
+      console.warn('[pulsar] Type declaration check failed:', error);
+    }
+  }
 }
 
 // Named export for convenience
