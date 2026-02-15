@@ -16,9 +16,10 @@ async function transformPSRFile(
   const hasHeader = code.includes('/* Pulsar v') && code.includes(' PSR */');
 
   // Check for runtime imports that only exist in transformed code
-  const hasRuntimeImports = /import\s+{[^}]*\$REGISTRY[^}]*}\s+from\s+['"]@pulsar-framework\/pulsar\.dev['"]/.test(code) ||
-                            /import\s+{[^}]*t_element[^}]*}\s+from\s+['"]@pulsar-framework\/pulsar\.dev['"]/.test(code) ||
-                            /import\s+{[^}]*insert[^}]*}\s+from\s+['"]@pulsar-framework\/pulsar\.dev['"]/.test(code);
+  const hasRuntimeImports =
+    /import\s+{[^}]*\$REGISTRY[^}]*}\s+from\s+['"]@pulsar-framework\/pulsar\.dev['"]/.test(code) ||
+    /import\s+{[^}]*t_element[^}]*}\s+from\s+['"]@pulsar-framework\/pulsar\.dev['"]/.test(code) ||
+    /import\s+{[^}]*insert[^}]*}\s+from\s+['"]@pulsar-framework\/pulsar\.dev['"]/.test(code);
 
   if (hasHeader || hasRuntimeImports) {
     if (debug) {
@@ -210,7 +211,7 @@ async function transformPSRFile(
       .replace(/\n/g, '<br>')
       .replace(/\\/g, '\\\\'); // Escape backslashes too!
 
-    const cleanFileName = JSON.stringify(fileName).slice(1, -1); 
+    const cleanFileName = JSON.stringify(fileName).slice(1, -1);
     const jsonFileName = JSON.stringify(fileName);
     const jsonError = JSON.stringify(errorMessage);
 
@@ -232,7 +233,7 @@ export default function() {
   return div;
 }
 `;
-    
+
     // Log the generated error component code for debugging
     if (debug) {
       console.log('[pulsar] ERROR COMPONENT CODE:', errorComponentCode);
@@ -242,7 +243,7 @@ export default function() {
     try {
       const result = await transformWithEsbuild(errorComponentCode, fileName || 'error.js', {
         loader: 'ts',
-        target: 'esnext'
+        target: 'esnext',
       });
       return { code: result.code, map: result.map };
     } catch (e) {
@@ -454,9 +455,14 @@ function pulsarPlugin(options: PulsarPluginOptions = {}): Plugin {
       const [cleanId] = id.split('?', 2);
       if (cleanId.endsWith('.psr')) {
         // GUARD: Skip if code is already transformed (prevent double transformation)
-        const isAlreadyTransformed = /import\s+{[^}]*\$REGISTRY[^}]*}\s+from\s+['"]@pulsar-framework\/pulsar\.dev['"]/.test(code) ||
-                                      /import\s+{[^}]*t_element[^}]*}\s+from\s+['"]@pulsar-framework\/pulsar\.dev['"]/.test(code);
-        
+        const isAlreadyTransformed =
+          /import\s+{[^}]*\$REGISTRY[^}]*}\s+from\s+['"]@pulsar-framework\/pulsar\.dev['"]/.test(
+            code
+          ) ||
+          /import\s+{[^}]*t_element[^}]*}\s+from\s+['"]@pulsar-framework\/pulsar\.dev['"]/.test(
+            code
+          );
+
         if (isAlreadyTransformed) {
           if (debug) {
             const fileName = cleanId.split('/').pop() || cleanId.split('\\').pop() || cleanId;
@@ -464,7 +470,7 @@ function pulsarPlugin(options: PulsarPluginOptions = {}): Plugin {
           }
           return null; // Let Vite use the already-transformed code
         }
-        
+
         if (debug) {
           const fileName = cleanId.split('/').pop() || cleanId.split('\\').pop() || cleanId;
           console.log(
