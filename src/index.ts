@@ -69,32 +69,24 @@ async function transformPSRFile(
       });
     }
 
-    // Import the pipeline from transformer
-    const transformerModule = await import('@pulsar-framework/transformer');
-    const { createPipeline } = transformerModule;
-
-    if (!createPipeline) {
-      console.error(`[pulsar] PSR: Pipeline not found in transformer module for ${fileName}`);
-      return {
-        code: `/* Pulsar v${Date.now()} - Pipeline not available, returning original */\n${code}`,
-        map: null,
-      };
-    }
+    // Import the working transformer pipeline
+    const { createPipeline } = await import('@pulsar-framework/transformer');
 
     if (debug) {
       console.log(`[pulsar] Creating transformation pipeline...`);
     }
 
-    // Create pipeline and transform
+    // Create pipeline
     const pipeline = createPipeline({
+      debug,
       filePath: id,
-      debug: debug,
     });
 
     if (debug) {
       console.log(`[pulsar] Running transformation pipeline...`);
     }
 
+    // Transform using the proven pipeline
     const result = await pipeline.transform(preprocessedCode);
 
     const endTime = performance.now();
@@ -105,18 +97,16 @@ async function transformPSRFile(
       console.log(`[pulsar] Output length: ${result.code.length} chars`);
       console.log(`[pulsar] Diagnostic count: ${result.diagnostics.length}`);
 
-      // Show metrics if available
+      // Show metrics
       if (result.metrics) {
         console.log(`[pulsar] METRICS:`);
-        console.log(`[pulsar]   - Lexer:     ${result.metrics.lexerTime.toFixed(2)}ms`);
-        console.log(`[pulsar]   - Parser:    ${result.metrics.parserTime.toFixed(2)}ms`);
-        console.log(`[pulsar]   - Transform: ${result.metrics.transformTime.toFixed(2)}ms`);
-        console.log(`[pulsar]   - Total:     ${result.metrics.totalTime.toFixed(2)}ms`);
+        console.log(`[pulsar]   - Lexer:     ${result.metrics.lexerTime}ms`);
+        console.log(`[pulsar]   - Parser:    ${result.metrics.parserTime}ms`);
+        console.log(`[pulsar]   - Transform: ${result.metrics.transformTime}ms`);
+        console.log(`[pulsar]   - Total:     ${result.metrics.totalTime}ms`);
       }
-    }
 
-    // FIX: Debug import transformation issue
-    if (debug) {
+      // Debug transformation details
       console.log(`\n[pulsar] DEBUG TRANSFORMATION for ${fileName}:`);
       console.log(`  Input first 300 chars: ${preprocessedCode.substring(0, 300)}...`);
       console.log(`  Output first 300 chars: ${result.code.substring(0, 300)}...`);
@@ -135,6 +125,16 @@ async function transformPSRFile(
       }
     }
 
+    // CRITICAL: Stop transformation if diagnostics contain errors
+    const hasErrors = result.diagnostics.some((d) => d.type === 'error');
+    if (hasErrors) {
+      const errorMessages = result.diagnostics
+        .filter((d) => d.type === 'error')
+        .map((d) => `${d.phase}: ${d.message}`)
+        .join('\n  - ');
+      throw new Error(`PSR transformation failed for ${fileName}:\n  - ${errorMessages}`);
+    }
+
     // VALIDATION: Check output quality before returning
     const outputCode = `/* Pulsar v${Date.now()} PSR */\n${result.code}`;
     const hasRegistry = outputCode.includes('$REGISTRY.execute');
@@ -143,17 +143,18 @@ async function transformPSRFile(
 
     // Error: Output too small (header-only)
     if (outputCode.length < 500) {
+      const msg = `Output too small: ${outputCode.length} bytes (expected > 500). Incomplete transformation.`;
       console.error(`[pulsar] ❌ VALIDATION FAILED: ${fileName}`);
-      console.error(`[pulsar]    Output too small: ${outputCode.length} bytes (expected > 500)`);
-      console.error(`[pulsar]    This indicates incomplete transformation.`);
-      console.error(`[pulsar]    Check for parser errors or unsupported syntax.`);
+      console.error(`[pulsar]    ${msg}`);
+      throw new Error(`PSR validation failed for ${fileName}: ${msg}`);
     }
 
     // Error: Missing exports
     if (inputHasExport && !hasExport) {
+      const msg = "Input has exports but output doesn't. Transformation failed silently.";
       console.error(`[pulsar] ❌ VALIDATION FAILED: ${fileName}`);
-      console.error(`[pulsar]    Input has exports but output doesn't.`);
-      console.error(`[pulsar]    Transformation likely failed silently.`);
+      console.error(`[pulsar]    ${msg}`);
+      throw new Error(`PSR validation failed for ${fileName}: ${msg}`);
     }
 
     // Warning: Missing $REGISTRY for components
@@ -181,6 +182,16 @@ async function transformPSRFile(
 
     // Return valid JS with error message instead of original PSR code
     const errorMessage = error instanceof Error ? error.message : String(error);
+
+    // Properly escape error message for HTML and JavaScript
+    const escapedErrorMessage = errorMessage
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+      .replace(/\n/g, '<br>');
+
     return {
       code: `
 /* Pulsar v${Date.now()} - PSR Transform failed */
@@ -189,7 +200,7 @@ console.error('[Pulsar] Error:', ${JSON.stringify(errorMessage)});
 export default function ErrorComponent() {
   const div = document.createElement('div');
   div.style.cssText = 'padding: 20px; background: #fee; border: 2px solid #f00; border-radius: 8px; color: #c00;';
-  div.innerHTML = '<h3>⚠️ PSR Transformation Error</h3><p><strong>${fileName}</strong></p><pre style="background:#fff;padding:10px;overflow:auto;">${errorMessage.replace(/'/g, "\\'")}</pre>';
+  div.innerHTML = \`<h3>⚠️ PSR Transformation Error</h3><p><strong>${fileName}</strong></p><pre style="background:#fff;padding:10px;overflow:auto;white-space:pre-wrap;">${escapedErrorMessage}</pre>\`;
   return div;
 }
 `,
