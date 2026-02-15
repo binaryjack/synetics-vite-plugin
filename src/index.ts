@@ -1,4 +1,4 @@
-import type { HmrContext, Plugin } from 'vite';
+import { type HmrContext, type Plugin, transformWithEsbuild } from 'vite';
 
 /**
  * Transform PSR file to TypeScript
@@ -7,22 +7,22 @@ async function transformPSRFile(
   code: string,
   id: string,
   debug: boolean
-): Promise<{ code: string; map: null } | null> {
+): Promise<{ code: string; map: any } | null> {
   const startTime = performance.now();
   const fileName = id.split('/').pop();
 
   // Guard: Skip if already FULLY transformed
-  // Check for header + registry + exports + reasonable size
+  // Check for header + reasonable indicators of transformation
   const hasHeader = code.includes('/* Pulsar v') && code.includes(' PSR */');
-  const hasRegistry = code.includes('$REGISTRY.execute');
-  const hasExport = code.includes('export const') || code.includes('export function');
-  const hasReasonableSize = code.length > 500;
 
-  if (hasHeader && hasRegistry && hasExport && hasReasonableSize) {
+  // Check for runtime imports that only exist in transformed code
+  const hasRuntimeImports = /import\s+{[^}]*\$REGISTRY[^}]*}\s+from\s+['"]@pulsar-framework\/pulsar\.dev['"]/.test(code) ||
+                            /import\s+{[^}]*t_element[^}]*}\s+from\s+['"]@pulsar-framework\/pulsar\.dev['"]/.test(code) ||
+                            /import\s+{[^}]*insert[^}]*}\s+from\s+['"]@pulsar-framework\/pulsar\.dev['"]/.test(code);
+
+  if (hasHeader || hasRuntimeImports) {
     if (debug) {
-      console.log(
-        `[pulsar] ${fileName} already fully transformed (${code.length} bytes), skipping`
-      );
+      console.log(`[pulsar] ${fileName} already transformed (${code.length} bytes), skipping`);
     }
     return { code, map: null };
   }
@@ -141,9 +141,11 @@ async function transformPSRFile(
     const hasExport = /export\s+(const|function)/.test(outputCode);
     const inputHasExport = /export\s+(component|function|const)/.test(code);
 
-    // Error: Output too small (header-only)
-    if (outputCode.length < 500) {
-      const msg = `Output too small: ${outputCode.length} bytes (expected > 500). Incomplete transformation.`;
+    // Error: Output too small (possible incomplete transformation)
+    // Use relative check: output should be at least 30% of input size, or minimum 200 bytes
+    const minOutputSize = Math.max(200, Math.floor(code.length * 0.3));
+    if (outputCode.length < minOutputSize) {
+      const msg = `Output too small: ${outputCode.length} bytes (expected > ${minOutputSize} based on input size ${code.length}). Incomplete transformation.`;
       console.error(`[pulsar] ❌ VALIDATION FAILED: ${fileName}`);
       console.error(`[pulsar]    ${msg}`);
       throw new Error(`PSR validation failed for ${fileName}: ${msg}`);
@@ -164,9 +166,22 @@ async function transformPSRFile(
       console.warn(`[pulsar]    Component may not render correctly.`);
     }
 
+    // Convert TypeScript to JavaScript (strip types, handle interfaces)
+    // Use 'ts' loader to ensure TypeScript syntax is handled regardless of file extension
+    const jsResult = await transformWithEsbuild(outputCode, fileName || id, {
+      loader: 'ts',
+      target: 'esnext',
+      sourcemap: true,
+    });
+
+    if (debug) {
+      console.log(`[pulsar] ESBuild transformation complete`);
+      console.log(`  JS Output first 300 chars: ${jsResult.code.substring(0, 300)}...`);
+    }
+
     return {
-      code: outputCode,
-      map: null,
+      code: jsResult.code,
+      map: jsResult.map,
     };
   } catch (error) {
     const duration = (performance.now() - startTime).toFixed(2);
@@ -190,22 +205,51 @@ async function transformPSRFile(
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;')
-      .replace(/\n/g, '<br>');
+      .replace(/`/g, '\\`') // Escape backticks for template literal
+      .replace(/\${/g, '\\${') // Escape interpolation start
+      .replace(/\n/g, '<br>')
+      .replace(/\\/g, '\\\\'); // Escape backslashes too!
 
-    return {
-      code: `
+    const cleanFileName = JSON.stringify(fileName).slice(1, -1); 
+    const jsonFileName = JSON.stringify(fileName);
+    const jsonError = JSON.stringify(errorMessage);
+
+    const errorComponentCode = `
 /* Pulsar v${Date.now()} - PSR Transform failed */
-console.error('[Pulsar] Transformation failed for ${fileName}');
-console.error('[Pulsar] Error:', ${JSON.stringify(errorMessage)});
-export default function ErrorComponent() {
+console.error('[Pulsar] Transformation failed for ' + ${jsonFileName});
+console.error('[Pulsar] Error:', ${jsonError});
+
+export default function() {
   const div = document.createElement('div');
-  div.style.cssText = 'padding: 20px; background: #fee; border: 2px solid #f00; border-radius: 8px; color: #c00;';
-  div.innerHTML = \`<h3>⚠️ PSR Transformation Error</h3><p><strong>${fileName}</strong></p><pre style="background:#fff;padding:10px;overflow:auto;white-space:pre-wrap;">${escapedErrorMessage}</pre>\`;
+  div.style.cssText = 'padding: 20px; background: #fee; border: 2px solid #f00; border-radius: 8px; color: #c00; font-family: monospace; z-index: 9999; position: relative;';
+  
+  // Use concatenation instead of template literal for innerHTML content to avoid nesting issues
+  const header = '<h3>⚠️ PSR Transformation Error</h3>';
+  const fileInfo = '<p><strong>' + ${jsonFileName} + '</strong></p>';
+  const errorInfo = '<pre style="background:#fff;padding:10px;overflow:auto;white-space:pre-wrap;border:1px solid #ddd;">' + \`${escapedErrorMessage}\` + '</pre>';
+  
+  div.innerHTML = header + fileInfo + errorInfo;
   return div;
 }
-`,
-      map: null,
-    };
+`;
+    
+    // Log the generated error component code for debugging
+    if (debug) {
+      console.log('[pulsar] ERROR COMPONENT CODE:', errorComponentCode);
+    }
+
+    // Transform with esbuild to ensure syntax validity (optional but good practice)
+    try {
+      const result = await transformWithEsbuild(errorComponentCode, fileName || 'error.js', {
+        loader: 'ts',
+        target: 'esnext'
+      });
+      return { code: result.code, map: result.map };
+    } catch (e) {
+      console.error('[pulsar] Failed to transform error component code:', e);
+      // Fallback to raw string if even esbuild fails on it
+      return { code: errorComponentCode, map: null };
+    }
   }
 }
 
@@ -409,6 +453,18 @@ function pulsarPlugin(options: PulsarPluginOptions = {}): Plugin {
       // This is a fallback for when Vite routes .psr files through transform instead of load
       const [cleanId] = id.split('?', 2);
       if (cleanId.endsWith('.psr')) {
+        // GUARD: Skip if code is already transformed (prevent double transformation)
+        const isAlreadyTransformed = /import\s+{[^}]*\$REGISTRY[^}]*}\s+from\s+['"]@pulsar-framework\/pulsar\.dev['"]/.test(code) ||
+                                      /import\s+{[^}]*t_element[^}]*}\s+from\s+['"]@pulsar-framework\/pulsar\.dev['"]/.test(code);
+        
+        if (isAlreadyTransformed) {
+          if (debug) {
+            const fileName = cleanId.split('/').pop() || cleanId.split('\\').pop() || cleanId;
+            console.log(`[pulsar] transform() hook: ${fileName} already transformed, skipping`);
+          }
+          return null; // Let Vite use the already-transformed code
+        }
+        
         if (debug) {
           const fileName = cleanId.split('/').pop() || cleanId.split('\\').pop() || cleanId;
           console.log(
