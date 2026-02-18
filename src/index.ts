@@ -407,25 +407,20 @@ function pulsarPlugin(options: PulsarPluginOptions = {}): Plugin {
       projectRoot = config.root;
     },
 
-    resolveId(id: string) {
-      if (id === DEVTOOLS_VIRTUAL_ID) return RESOLVED_DEVTOOLS_VIRTUAL_ID;
-      return undefined;
-    },
-
-    load(id: string) {
-      if (id === RESOLVED_DEVTOOLS_VIRTUAL_ID) {
-        return { code: DEVTOOLS_CLIENT_CODE, map: null };
-      }
-      return undefined;
-    },
-
-    transformIndexHtml(html: string) {
-      if (!devtools || !isDevMode) return html;
-      const scriptTag = `<script type="module">import '${DEVTOOLS_VIRTUAL_ID}';</script>`;
-      return html.replace('</head>', `${scriptTag}\n</head>`);
+    transformIndexHtml() {
+      if (!devtools || !isDevMode) return [];
+      return [
+        {
+          tag: 'script',
+          attrs: { type: 'module', src: `/@id/${DEVTOOLS_VIRTUAL_ID}` },
+          injectTo: 'head',
+        },
+      ];
     },
 
     async resolveId(source: string, importer: string | undefined) {
+      // Handle devtools virtual module first
+      if (source === DEVTOOLS_VIRTUAL_ID) return RESOLVED_DEVTOOLS_VIRTUAL_ID;
       // Strip query parameters (Vite adds ?import, ?t=timestamp, etc.)
       const [cleanSource, query] = source.split('?', 2);
 
@@ -500,6 +495,11 @@ function pulsarPlugin(options: PulsarPluginOptions = {}): Plugin {
     },
 
     async load(id: string) {
+      // Handle devtools virtual module first
+      if (id === RESOLVED_DEVTOOLS_VIRTUAL_ID) {
+        return { code: DEVTOOLS_CLIENT_CODE, map: null };
+      }
+
       // Use load hook instead of transform to process .psr files BEFORE Vite's import analysis
       // This prevents "Failed to parse source for import analysis" errors
 
