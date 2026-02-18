@@ -1,5 +1,79 @@
 import { type HmrContext, type Plugin, transformWithEsbuild } from 'vite';
 
+/** Virtual module ID for the devtools client */
+const DEVTOOLS_VIRTUAL_ID = 'virtual:pulsar-devtools';
+const RESOLVED_DEVTOOLS_VIRTUAL_ID = '\0' + DEVTOOLS_VIRTUAL_ID;
+
+/** Inline browser client injected by Vite in dev mode */
+const DEVTOOLS_CLIENT_CODE = `
+(function() {
+  if (typeof window === 'undefined') return;
+  if (window.__PULSAR_DEVTOOLS__) return;
+
+  const TRACE_PORT = 9339;
+  const SESSION_ID = 'browser-' + Date.now();
+
+  const events = [];
+  let panel = null;
+  let visible = false;
+
+  function createPanel() {
+    const el = document.createElement('div');
+    el.id = '__pulsar-devtools__';
+    el.style.cssText = 'position:fixed;bottom:0;right:0;width:400px;max-height:340px;background:#0f1117;color:#e2e8f0;font-family:monospace;font-size:11px;border-top:2px solid #7c3aed;border-left:2px solid #7c3aed;border-radius:6px 0 0 0;z-index:99999;display:none;flex-direction:column;overflow:hidden;box-shadow:-4px -4px 20px rgba(124,58,237,0.3);';
+    el.innerHTML = '<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:#1e1b4b;border-bottom:1px solid #312e81;flex-shrink:0;"><span style="color:#a78bfa;font-weight:bold;">⚡ PULSAR DevTools</span><div style="display:flex;gap:6px;"><button id="__pulsar-clear__" style="background:#312e81;border:none;color:#c4b5fd;padding:2px 8px;border-radius:3px;cursor:pointer;font-size:10px;">clear</button><button id="__pulsar-close__" style="background:#312e81;border:none;color:#c4b5fd;padding:2px 8px;border-radius:3px;cursor:pointer;font-size:10px;">✕</button></div></div><div id="__pulsar-log__" style="overflow-y:auto;flex:1;padding:4px 0;"></div><div style="padding:4px 10px;background:#1e1b4b;border-top:1px solid #312e81;font-size:9px;color:#4c1d95;flex-shrink:0;">Alt+P to toggle</div>';
+    document.body.appendChild(el);
+    el.querySelector('#__pulsar-close__').addEventListener('click', hide);
+    el.querySelector('#__pulsar-clear__').addEventListener('click', function() {
+      el.querySelector('#__pulsar-log__').innerHTML = '';
+      events.length = 0;
+    });
+    return el;
+  }
+
+  const CHANNEL_COLOR = { signal:'#34d399', component:'#60a5fa', transformer:'#f472b6', vite:'#fbbf24', lifecycle:'#a78bfa', error:'#f87171' };
+
+  function appendRow(event) {
+    if (!panel) return;
+    const log = panel.querySelector('#__pulsar-log__');
+    const ts = new Date(event.timestamp).toISOString().slice(11,23);
+    const color = CHANNEL_COLOR[event.channel] || '#94a3b8';
+    const row = document.createElement('div');
+    row.style.cssText = 'padding:2px 10px;border-bottom:1px solid #1a1a2e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+    row.innerHTML = '<span style="color:#475569;">' + ts + '</span> <span style="color:' + color + ';">[' + event.channel + ']</span> <span style="color:#e2e8f0;">' + event.type + '</span>' + (event.name ? ' <span style="color:#94a3b8;">' + event.name + '</span>' : '');
+    log.appendChild(row);
+    log.scrollTop = log.scrollHeight;
+    while (log.children.length > 200) log.removeChild(log.firstChild);
+  }
+
+  function show() { visible = true; if (panel) panel.style.display = 'flex'; }
+  function hide() { visible = false; if (panel) panel.style.display = 'none'; }
+  function toggle() { visible ? hide() : show(); }
+
+  function emit(event) {
+    events.push(event);
+    if (events.length > 500) events.shift();
+    if (visible) appendRow(event);
+    fetch('http://localhost:' + TRACE_PORT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ events: [event], source: 'browser', sessionId: SESSION_ID })
+    }).catch(function() {});
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    panel = createPanel();
+  });
+
+  document.addEventListener('keydown', function(e) {
+    if (e.altKey && e.key === 'p') toggle();
+  });
+
+  window.__PULSAR_DEVTOOLS__ = { emit: emit, show: show, hide: hide, toggle: toggle };
+  console.log('[Pulsar DevTools] Loaded — Alt+P to toggle overlay');
+})();
+`;
+
 /**
  * Transform PSR file to TypeScript
  */
@@ -293,6 +367,13 @@ export interface PulsarPluginOptions {
    * Enable dependency resolution
    */
   enableDependencyResolution?: boolean;
+
+  /**
+   * Enable Pulsar DevTools browser overlay in dev mode
+   * Injects floating panel + posts events to VS Code tracer on port 9339
+   * @default true
+   */
+  devtools?: boolean;
 }
 
 const PLUGIN_VERSION = Date.now(); // Version changes on every server restart
@@ -312,7 +393,7 @@ declare module '*.psr';
 `;
 
 function pulsarPlugin(options: PulsarPluginOptions = {}): Plugin {
-  const { debug = false, autoInjectHMR = true } = options;
+  const { debug = false, autoInjectHMR = true, devtools = true } = options;
 
   let projectRoot = '';
   let isDevMode = true;
@@ -324,9 +405,24 @@ function pulsarPlugin(options: PulsarPluginOptions = {}): Plugin {
     async configResolved(config) {
       isDevMode = config.command === 'serve';
       projectRoot = config.root;
+    },
 
-      // Note: Type declarations are provided by @pulsar-framework/pulsar.dev
-      // No need to auto-create local files
+    resolveId(id: string) {
+      if (id === DEVTOOLS_VIRTUAL_ID) return RESOLVED_DEVTOOLS_VIRTUAL_ID;
+      return undefined;
+    },
+
+    load(id: string) {
+      if (id === RESOLVED_DEVTOOLS_VIRTUAL_ID) {
+        return { code: DEVTOOLS_CLIENT_CODE, map: null };
+      }
+      return undefined;
+    },
+
+    transformIndexHtml(html: string) {
+      if (!devtools || !isDevMode) return html;
+      const scriptTag = `<script type="module">import '${DEVTOOLS_VIRTUAL_ID}';</script>`;
+      return html.replace('</head>', `${scriptTag}\n</head>`);
     },
 
     async resolveId(source: string, importer: string | undefined) {
