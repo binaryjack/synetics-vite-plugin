@@ -26,10 +26,12 @@
     "vite": "^5.0.0 || ^6.0.0"
   },
   "dependencies": {
-    "@pulsar-framework/transformer": "workspace:*",
+    "@pulsar-framework/transformer": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.30",
     "typescript": "^5.9.3"
   },
-  "devDependencies": {},
   "author": "Tadeo Piana <https://www.linkedin.com/in/tadeopiana/>",
   "license": "MIT",
   "repository": {
