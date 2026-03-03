@@ -241,9 +241,17 @@ async function transformPSRFile(
       console.warn(`[pulsar]    Component may not render correctly.`);
     }
 
-    // Convert TypeScript to JavaScript (strip types, handle interfaces)
-    // Use 'ts' loader to ensure TypeScript syntax is handled regardless of file extension
-    const jsResult = await transformWithEsbuild(outputCode, fileName || id, {
+    // Embed the PSR→TS sourcemap inline so esbuild can chain PSR→TS→JS
+    // automatically — debuggers get full fidelity back to the original .psr file.
+    let tsCodeForEsbuild = outputCode;
+    if (result.map) {
+      const mapBase64 = Buffer.from(JSON.stringify(result.map)).toString('base64');
+      tsCodeForEsbuild += `\n//# sourceMappingURL=data:application/json;base64,${mapBase64}`;
+    }
+
+    // Convert TypeScript to JavaScript (strip types, handle interfaces).
+    // sourcemap:true + the inline input sourcemap → esbuild chains them automatically.
+    const jsResult = await transformWithEsbuild(tsCodeForEsbuild, fileName || id, {
       loader: 'ts',
       target: 'esnext',
       sourcemap: true,
