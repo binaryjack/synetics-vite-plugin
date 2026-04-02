@@ -145,7 +145,7 @@ async function transformPSRFile(
     }
 
     // Import the working transformer pipeline
-    const { createPipeline } = await import('@pulsar-framework/transformer');
+    const { createPipeline } = await import('../../pulsar-transformer/src/index.ts');
 
     if (debug) {
       console.log(`[pulsar] Creating transformation pipeline...`);
