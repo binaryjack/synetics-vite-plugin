@@ -1,7 +1,7 @@
 {
-  "name": "@pulsar-framework/vite-plugin",
+  "name": "@synetics/vite-plugin",
   "version": "0.7.0-alpha",
-  "description": "Vite plugin for the Pulsar framework",
+  "description": "Vite plugin for the Synetics framework",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -27,7 +27,7 @@
     "vite": "^5.0.0 || ^6.0.0"
   },
   "dependencies": {
-    "@pulsar-framework/transformer": "workspace:*"
+    "@synetics/transformer": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.19.30",
@@ -37,11 +37,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/binaryjack/pulsar-vite-plugin.git"
+    "url": "https://github.com/binaryjack/synetics-vite-plugin.git"
   },
-  "homepage": "https://github.com/binaryjack/pulsar-vite-plugin#readme",
+  "homepage": "https://github.com/binaryjack/synetics-vite-plugin#readme",
   "bugs": {
-    "url": "https://github.com/binaryjack/pulsar-vite-plugin/issues"
+    "url": "https://github.com/binaryjack/synetics-vite-plugin/issues"
   },
   "publishConfig": {
     "access": "public",

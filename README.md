@@ -1,4 +1,4 @@
-<img src="https://raw.githubusercontent.com/binaryjack/pulsar-design-system/main/art-kit/SVG/pulsar-logo.svg" alt="Pulsar" width="400"/>
+<img src="https://raw.githubusercontent.com/binaryjack/synetics-design-system/main/art-kit/SVG/pulsar-logo.svg" alt="Pulsar" width="400"/>
 
 # @pulsar/vite-plugin
 
@@ -30,10 +30,10 @@ Add the plugin to your `vite.config.ts`:
 
 ```typescript
 import { defineConfig } from 'vite';
-import { pulsarPlugin } from '@pulsar/vite-plugin';
+import { syneticsPlugin } from '@pulsar/vite-plugin';
 
 export default defineConfig({
-  plugins: [pulsarPlugin()],
+  plugins: [syneticsPlugin()],
 });
 ```
 
@@ -126,25 +126,25 @@ Debug channels allow you to filter transformation logs by pipeline phase, reduci
 
 ```typescript
 // Example 1: Show only code generation and validation
-pulsarPlugin({
+syneticsPlugin({
   debug: true,
   debugChannels: ['emitter', 'validator'],
 });
 
 // Example 2: Debug parsing issues
-pulsarPlugin({
+syneticsPlugin({
   debug: true,
   debugChannels: ['lexer', 'parser'],
 });
 
 // Example 3: Performance monitoring
-pulsarPlugin({
+syneticsPlugin({
   debug: true,
   debugChannels: ['pipeline'],
 });
 
 // Example 4: All channels (default when debug is true)
-pulsarPlugin({
+syneticsPlugin({
   debug: true,
   // All channels enabled by default
 });
@@ -167,7 +167,7 @@ pulsarPlugin({
 #### Scenario 1: \"Why isn't my component transforming?\"
 
 ```typescript
-pulsarPlugin({
+syneticsPlugin({
   debug: true,
   debugChannels: ['parser', 'pipeline'],
 });
@@ -181,7 +181,7 @@ Look for:
 #### Scenario 2: \"The generated code looks wrong\"
 
 ```typescript
-pulsarPlugin({
+syneticsPlugin({
   debug: true,
   debugChannels: ['emitter', 'validator'],
 });
@@ -195,7 +195,7 @@ Look for:
 #### Scenario 3: \"Transformation is slow\"
 
 ```typescript
-pulsarPlugin({
+syneticsPlugin({
   debug: true,
   debugChannels: ['pipeline'],
 });
@@ -209,7 +209,7 @@ Look for:
 #### Scenario 4: \"I need to see everything\"
 
 ```typescript
-pulsarPlugin({
+syneticsPlugin({
   debug: true,
   // Omit debugChannels to enable all
 });
@@ -225,7 +225,7 @@ With `debug: true`, the plugin provides detailed transformation logs:
 
 ```bash
 # File detection
-[pulsar] transform() called for: Counter.psr (PSR - WILL TRANSFORM)
+[synetics] transform() called for: Counter.syn (PSR - WILL TRANSFORM)
 
 # Full pipeline (all channels enabled)
 [2026-02-06T18:39:41.143Z] [PIPELINE] Starting transformation (+0ms)
@@ -244,12 +244,12 @@ With `debug: true`, the plugin provides detailed transformation logs:
 [2026-02-06T18:39:41.148Z] [PIPELINE] Transformation complete (+5ms)
 
 # Summary
-[pulsar] ⚡ PSR: Counter.psr transformed in 4.91ms
-[pulsar]   ℹ️ lexer: Lexer: 31 tokens generated
-[pulsar]   ℹ️ parser: Parser: AST with 2 nodes
-[pulsar]   ℹ️ analyzer: Analyzer: IR generated
-[pulsar]   ℹ️ transform: Transform: IR pass-through
-[pulsar]   ℹ️ emitter: Emitter: 9 lines generated
+[synetics] ⚡ PSR: Counter.syn transformed in 4.91ms
+[synetics]   ℹ️ lexer: Lexer: 31 tokens generated
+[synetics]   ℹ️ parser: Parser: AST with 2 nodes
+[synetics]   ℹ️ analyzer: Analyzer: IR generated
+[synetics]   ℹ️ transform: Transform: IR pass-through
+[synetics]   ℹ️ emitter: Emitter: 9 lines generated
 ```
 
 ### Filtered Debug Output
@@ -261,17 +261,17 @@ With `debugChannels`, you see only the phases you care about:
 ```
 
 ```bash
-[pulsar] transform() called for: Counter.psr (PSR - WILL TRANSFORM)
+[synetics] transform() called for: Counter.syn (PSR - WILL TRANSFORM)
 [2026-02-06T18:39:41.146Z] [EMITTER] Generating TypeScript (+3ms)
 [2026-02-06T18:39:41.147Z] [EMITTER] Generated 9 lines of code (+4ms)
 [2026-02-06T18:39:41.147Z] [VALIDATOR] Validating output (+4ms)
 [2026-02-06T18:39:41.148Z] [VALIDATOR] Validation: 0 errors, 0 warnings (+4ms)
-[pulsar] ⚡ PSR: Counter.psr transformed in 4.91ms
-[pulsar]   ℹ️ lexer: Lexer: 31 tokens generated
-[pulsar]   ℹ️ parser: Parser: AST with 2 nodes
-[pulsar]   ℹ️ analyzer: Analyzer: IR generated
-[pulsar]   ℹ️ transform: Transform: IR pass-through
-[pulsar]   ℹ️ emitter: Emitter: 9 lines generated
+[synetics] ⚡ PSR: Counter.syn transformed in 4.91ms
+[synetics]   ℹ️ lexer: Lexer: 31 tokens generated
+[synetics]   ℹ️ parser: Parser: AST with 2 nodes
+[synetics]   ℹ️ analyzer: Analyzer: IR generated
+[synetics]   ℹ️ transform: Transform: IR pass-through
+[synetics]   ℹ️ emitter: Emitter: 9 lines generated
 ```
 
 **Result:** 70% less console noise! 🎯
@@ -293,7 +293,7 @@ if (import.meta.hot) {
 
 ```typescript
 export default defineConfig({
-  plugins: [pulsarPlugin()],
+  plugins: [syneticsPlugin()],
   build: {
     minify: 'esbuild',
     target: 'es2020',
@@ -327,11 +327,11 @@ export default defineConfig({
 
 ```typescript
 import { defineConfig } from 'vite';
-import { pulsarPlugin } from '@pulsar/vite-plugin';
+import { syneticsPlugin } from '@pulsar/vite-plugin';
 import { resolve } from 'path';
 
 export default defineConfig({
-  plugins: [pulsarPlugin()],
+  plugins: [syneticsPlugin()],
   resolve: {
     alias: {
       '@': resolve(__dirname, './src'),
@@ -405,7 +405,7 @@ The plugin is designed for optimal build performance:
 ### Completed ✅
 
 - Zero-config Vite integration
-- PSR (.psr) file transformation
+- PSR (.syn) file transformation
 - TypeScript program creation for transformation
 - Development mode validation
 - Debug logging with channel filtering
@@ -433,12 +433,12 @@ The plugin is designed for optimal build performance:
 
 | Package                                                                     | Description                                 | Status    |
 | --------------------------------------------------------------------------- | ------------------------------------------- | --------- |
-| [pulsar.dev](https://github.com/binaryjack/pulsar.dev)                      | Core framework with signal-based reactivity | ✅ Active |
-| [@pulsar/ui](https://github.com/binaryjack/pulsar-ui.dev)                   | UI component library                        | ✅ Active |
-| [@pulsar/design-tokens](https://github.com/binaryjack/pulsar-design-system) | Design tokens & art-kit                     | ✅ Active |
-| [@pulsar/transformer](https://github.com/binaryjack/pulsar-transformer)     | JSX to DOM compiler                         | ✅ Active |
-| [@pulsar/vite-plugin](https://github.com/binaryjack/pulsar-vite-plugin)     | Vite integration                            | ✅ Active |
-| [@pulsar/demo](https://github.com/binaryjack/pulsar-demo)                   | Example applications                        | ✅ Active |
+| [synetics.dev](https://github.com/binaryjack/synetics.dev)                      | Core framework with signal-based reactivity | ✅ Active |
+| [@pulsar/ui](https://github.com/binaryjack/synetics-ui.dev)                   | UI component library                        | ✅ Active |
+| [@pulsar/design-tokens](https://github.com/binaryjack/synetics-design-system) | Design tokens & art-kit                     | ✅ Active |
+| [@pulsar/transformer](https://github.com/binaryjack/synetics-transformer)     | JSX to DOM compiler                         | ✅ Active |
+| [@pulsar/vite-plugin](https://github.com/binaryjack/synetics-vite-plugin)     | Vite integration                            | ✅ Active |
+| [@pulsar/demo](https://github.com/binaryjack/synetics-demo)                   | Example applications                        | ✅ Active |
 
 ## Contributing
 
@@ -447,8 +447,8 @@ We welcome contributions! To get started:
 1. **Clone the repository**
 
    ```bash
-   git clone https://github.com/binaryjack/pulsar-vite-plugin.git
-   cd pulsar-vite-plugin
+   git clone https://github.com/binaryjack/synetics-vite-plugin.git
+   cd synetics-vite-plugin
    ```
 
 2. **Install dependencies**
@@ -474,15 +474,15 @@ We welcome contributions! To get started:
 ### Development Tips
 
 - **Plugin structure**: Check [vite-plugin-temp/src/index.ts](./vite-plugin-temp/src/index.ts)
-- **Testing**: Use [@pulsar/demo](../pulsar-demo) as a test bed
+- **Testing**: Use [@pulsar/demo](../synetics-demo) as a test bed
 - **Debugging**: Add `console.log` statements in the `transform` function
 - **Vite API**: Reference [Vite Plugin API docs](https://vitejs.dev/guide/api-plugin.html)
 
 ## License
 
-MIT License - Copyright (c) 2026 Pulsar Framework
+MIT License - Copyright (c) 2026 Synetics framework
 
-See [LICENSE](../pulsar.dev/LICENSE) file for details.
+See [LICENSE](../synetics.dev/LICENSE) file for details.
 
 ---
 

@@ -1,4 +1,4 @@
-# Contributing to pulsar-vite-plugin
+# Contributing to synetics-vite-plugin
 
 Thank you for your interest in contributing! Please see the [main contributing guide](../../CONTRIBUTING.md) for general guidelines.
 
@@ -12,13 +12,13 @@ cd ../..
 pnpm install
 
 # Build this package
-pnpm --filter @pulsar-framework/vite-plugin build
+pnpm --filter @synetics/vite-plugin build
 
 # Run tests
-pnpm --filter @pulsar-framework/vite-plugin test
+pnpm --filter @synetics/vite-plugin test
 
 # Watch mode
-pnpm --filter @pulsar-framework/vite-plugin dev
+pnpm --filter @synetics/vite-plugin dev
 ```
 
 ### Architecture
@@ -30,9 +30,9 @@ This package is part of the Visual Schema Builder monorepo. For detailed archite
 Please ensure all tests pass before submitting a pull request:
 
 ```bash
-pnpm --filter @pulsar-framework/vite-plugin test
-pnpm --filter @pulsar-framework/vite-plugin typecheck
-pnpm --filter @pulsar-framework/vite-plugin lint
+pnpm --filter @synetics/vite-plugin test
+pnpm --filter @synetics/vite-plugin typecheck
+pnpm --filter @synetics/vite-plugin lint
 ```
 
 ### Documentation

@@ -1,14 +1,14 @@
 import { type HmrContext, type Plugin, transformWithEsbuild } from 'vite';
 
 /** Virtual module ID for the devtools client */
-const DEVTOOLS_VIRTUAL_ID = 'virtual:pulsar-devtools';
+const DEVTOOLS_VIRTUAL_ID = 'virtual:synetics-devtools';
 const RESOLVED_DEVTOOLS_VIRTUAL_ID = '\0' + DEVTOOLS_VIRTUAL_ID;
 
 /** Inline browser client injected by Vite in dev mode */
 const DEVTOOLS_CLIENT_CODE = `
 (function() {
   if (typeof window === 'undefined') return;
-  if (window.__PULSAR_DEVTOOLS__) return;
+  if (window.__SYNETICS_DEVTOOLS__) return;
 
   const TRACE_PORT = 9339;
   const SESSION_ID = 'browser-' + Date.now();
@@ -40,7 +40,21 @@ const DEVTOOLS_CLIENT_CODE = `
     const color = CHANNEL_COLOR[event.channel] || '#94a3b8';
     const row = document.createElement('div');
     row.style.cssText = 'padding:2px 10px;border-bottom:1px solid #1a1a2e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
-    row.innerHTML = '<span style="color:#475569;">' + ts + '</span> <span style="color:' + color + ';">[' + event.channel + ']</span> <span style="color:#e2e8f0;">' + event.type + '</span>' + (event.name ? ' <span style="color:#94a3b8;">' + event.name + '</span>' : '');
+    
+    let dataStr = '';
+    if (event.data) {
+      if (event.channel === 'signal' && event.type === 'update') {
+        let prev = typeof event.data.prev === 'object' ? JSON.stringify(event.data.prev) : String(event.data.prev);
+        let next = typeof event.data.next === 'object' ? JSON.stringify(event.data.next) : String(event.data.next);
+        if (prev.length > 20) prev = prev.slice(0, 20) + '...';
+        if (next.length > 20) next = next.slice(0, 20) + '...';
+        dataStr = ' <span style="color:#fbbf24; font-size:10px;">' + prev + ' ➔ ' + next + '</span>';
+      } else {
+        try { dataStr = ' <span style="color:#94a3b8; font-size:10px;">' + JSON.stringify(event.data) + '</span>'; } catch(e){}
+      }
+    }
+    
+    row.innerHTML = '<span style="color:#475569;">' + ts + '</span> <span style="color:' + color + ';">[' + event.channel + ']</span> <span style="color:#e2e8f0;">' + event.type + '</span>' + (event.name ? ' <span style="color:#94a3b8;">' + event.name + '</span>' : '') + dataStr;
     log.appendChild(row);
     log.scrollTop = log.scrollHeight;
     while (log.children.length > 200) log.removeChild(log.firstChild);
@@ -69,8 +83,19 @@ const DEVTOOLS_CLIENT_CODE = `
     if (e.altKey && e.key === 'p') toggle();
   });
 
-  window.__PULSAR_DEVTOOLS__ = { emit: emit, show: show, hide: hide, toggle: toggle };
-  console.log('[Pulsar DevTools] Loaded — Alt+P to toggle overlay');
+  window.addEventListener('synetics:signal-update', function(e) {
+    const detail = e.detail;
+    emit({
+      timestamp: Date.now(),
+      channel: 'signal',
+      type: 'update',
+      name: detail.id,
+      data: { prev: detail.prevValue, next: detail.newValue }
+    });
+  });
+
+  window.__SYNETICS_DEVTOOLS__ = { emit: emit, show: show, hide: hide, toggle: toggle };
+  console.log('[Synetics DevTools] Loaded — Alt+P to toggle overlay');
 })();
 `;
 
@@ -91,21 +116,21 @@ async function transformPSRFile(
 
   // Check for runtime imports that only exist in transformed code
   const hasRuntimeImports =
-    /import\s+{[^}]*\$REGISTRY[^}]*}\s+from\s+['"]@pulsar-framework\/pulsar\.dev['"]/.test(code) ||
-    /import\s+{[^}]*t_element[^}]*}\s+from\s+['"]@pulsar-framework\/pulsar\.dev['"]/.test(code) ||
-    /import\s+{[^}]*insert[^}]*}\s+from\s+['"]@pulsar-framework\/pulsar\.dev['"]/.test(code);
+    /import\s+{[^}]*\$REGISTRY[^}]*}\s+from\s+['"]@synetics\/pulsar\.dev['"]/.test(code) ||
+    /import\s+{[^}]*t_element[^}]*}\s+from\s+['"]@synetics\/pulsar\.dev['"]/.test(code) ||
+    /import\s+{[^}]*insert[^}]*}\s+from\s+['"]@synetics\/pulsar\.dev['"]/.test(code);
 
   if (hasHeader || hasRuntimeImports) {
     if (debug) {
-      console.log(`[pulsar] ${fileName} already transformed (${code.length} bytes), skipping`);
+      console.log(`[synetics] ${fileName} already transformed (${code.length} bytes), skipping`);
     }
     return { code, map: null };
   }
 
   if (debug) {
-    console.log(`\n[pulsar] ========== TRANSFORMATION START: ${fileName} ==========`);
-    console.log(`[pulsar] File path: ${id}`);
-    console.log(`[pulsar] Input length: ${code.length} chars`);
+    console.log(`\n[synetics] ========== TRANSFORMATION START: ${fileName} ==========`);
+    console.log(`[synetics] File path: ${id}`);
+    console.log(`[synetics] Input length: ${code.length} chars`);
   }
 
   try {
@@ -119,8 +144,8 @@ async function transformPSRFile(
       ''
     );
     if (debug) {
-      console.log(`[pulsar] Preprocessing complete`);
-      console.log(`[pulsar] Preprocessed length: ${preprocessedCode.length} chars`);
+      console.log(`[synetics] Preprocessing complete`);
+      console.log(`[synetics] Preprocessed length: ${preprocessedCode.length} chars`);
     }
 
     // PRE-TRANSFORMATION VALIDATION: Check for potential issues
@@ -137,18 +162,18 @@ async function transformPSRFile(
         const matches = preprocessedCode.match(pattern);
         if (matches && matches.length > 0) {
           console.warn(
-            `[pulsar] ⚠️  ${fileName}: Found ${matches.length} uses of '${name}' operator`
+            `[synetics] ⚠️  ${fileName}: Found ${matches.length} uses of '${name}' operator`
           );
-          console.warn(`[pulsar]    ${msg} - transformation may fail`);
+          console.warn(`[synetics]    ${msg} - transformation may fail`);
         }
       });
     }
 
     // Import the working transformer pipeline
-    const { createPipeline } = await import('../../pulsar-transformer/src/index.ts');
+    const { createPipeline } = await import('@synetics/transformer');
 
     if (debug) {
-      console.log(`[pulsar] Creating transformation pipeline...`);
+      console.log(`[synetics] Creating transformation pipeline...`);
     }
 
     // Create pipeline
@@ -158,7 +183,7 @@ async function transformPSRFile(
     });
 
     if (debug) {
-      console.log(`[pulsar] Running transformation pipeline...`);
+      console.log(`[synetics] Running transformation pipeline...`);
     }
 
     // Transform using the proven pipeline
@@ -168,34 +193,34 @@ async function transformPSRFile(
     const duration = (endTime - startTime).toFixed(2);
 
     if (debug) {
-      console.log(`[pulsar] Transformation complete in ${duration}ms`);
-      console.log(`[pulsar] Output length: ${result.code.length} chars`);
-      console.log(`[pulsar] Diagnostic count: ${result.diagnostics.length}`);
+      console.log(`[synetics] Transformation complete in ${duration}ms`);
+      console.log(`[synetics] Output length: ${result.code.length} chars`);
+      console.log(`[synetics] Diagnostic count: ${result.diagnostics.length}`);
 
       // Show metrics
       if (result.metrics) {
-        console.log(`[pulsar] METRICS:`);
-        console.log(`[pulsar]   - Lexer:     ${result.metrics.lexerTime}ms`);
-        console.log(`[pulsar]   - Parser:    ${result.metrics.parserTime}ms`);
-        console.log(`[pulsar]   - Transform: ${result.metrics.transformTime}ms`);
-        console.log(`[pulsar]   - Total:     ${result.metrics.totalTime}ms`);
+        console.log(`[synetics] METRICS:`);
+        console.log(`[synetics]   - Lexer:     ${result.metrics.lexerTime}ms`);
+        console.log(`[synetics]   - Parser:    ${result.metrics.parserTime}ms`);
+        console.log(`[synetics]   - Transform: ${result.metrics.transformTime}ms`);
+        console.log(`[synetics]   - Total:     ${result.metrics.totalTime}ms`);
       }
 
       // Debug transformation details
-      console.log(`\n[pulsar] DEBUG TRANSFORMATION for ${fileName}:`);
+      console.log(`\n[synetics] DEBUG TRANSFORMATION for ${fileName}:`);
       console.log(`  Input first 300 chars: ${preprocessedCode.substring(0, 300)}...`);
       console.log(`  Output first 300 chars: ${result.code.substring(0, 300)}...`);
-      console.log(`  Has .psr in input: ${/\.psr['"]/.test(preprocessedCode)}`);
+      console.log(`  Has .syn in input: ${/\.syn['"]/.test(preprocessedCode)}`);
       console.log(`  Has .js in output: ${/\.js['"]/.test(result.code)}`);
-      console.log(`[pulsar] ========== TRANSFORMATION END: ${fileName} ==========\n`);
+      console.log(`[synetics] ========== TRANSFORMATION END: ${fileName} ==========\n`);
     }
 
     if (debug || result.diagnostics.some((d) => d.type === 'error')) {
-      console.log(`[pulsar] ⚡ PSR: ${fileName} transformed in ${duration}ms`);
+      console.log(`[synetics] ⚡ PSR: ${fileName} transformed in ${duration}ms`);
       if (result.diagnostics.length > 0) {
         result.diagnostics.forEach((diag) => {
           const level = diag.type === 'error' ? '❌' : diag.type === 'warning' ? '⚠️' : 'ℹ️';
-          console.log(`[pulsar]   ${level} ${diag.phase}: ${diag.message}`);
+          console.log(`[synetics]   ${level} ${diag.phase}: ${diag.message}`);
         });
       }
     }
@@ -221,28 +246,28 @@ async function transformPSRFile(
     const minOutputSize = Math.max(200, Math.floor(code.length * 0.3));
     if (outputCode.length < minOutputSize) {
       const msg = `Output too small: ${outputCode.length} bytes (expected > ${minOutputSize} based on input size ${code.length}). Incomplete transformation.`;
-      console.error(`[pulsar] ❌ VALIDATION FAILED: ${fileName}`);
-      console.error(`[pulsar]    ${msg}`);
+      console.error(`[synetics] ❌ VALIDATION FAILED: ${fileName}`);
+      console.error(`[synetics]    ${msg}`);
       throw new Error(`PSR validation failed for ${fileName}: ${msg}`);
     }
 
     // Error: Missing exports
     if (inputHasExport && !hasExport) {
       const msg = "Input has exports but output doesn't. Transformation failed silently.";
-      console.error(`[pulsar] ❌ VALIDATION FAILED: ${fileName}`);
-      console.error(`[pulsar]    ${msg}`);
+      console.error(`[synetics] ❌ VALIDATION FAILED: ${fileName}`);
+      console.error(`[synetics]    ${msg}`);
       throw new Error(`PSR validation failed for ${fileName}: ${msg}`);
     }
 
     // Warning: Missing $REGISTRY for components
     if (code.includes('export component') && !hasRegistry) {
-      console.warn(`[pulsar] ⚠️  WARNING: ${fileName}`);
-      console.warn(`[pulsar]    Component found but $REGISTRY.execute missing.`);
-      console.warn(`[pulsar]    Component may not render correctly.`);
+      console.warn(`[synetics] ⚠️  WARNING: ${fileName}`);
+      console.warn(`[synetics]    Component found but $REGISTRY.execute missing.`);
+      console.warn(`[synetics]    Component may not render correctly.`);
     }
 
     // Embed the PSR→TS sourcemap inline so esbuild can chain PSR→TS→JS
-    // automatically — debuggers get full fidelity back to the original .psr file.
+    // automatically — debuggers get full fidelity back to the original .syn file.
     let tsCodeForEsbuild = outputCode;
     if (result.map) {
       const mapBase64 = Buffer.from(JSON.stringify(result.map)).toString('base64');
@@ -258,7 +283,7 @@ async function transformPSRFile(
     });
 
     if (debug) {
-      console.log(`[pulsar] ESBuild transformation complete`);
+      console.log(`[synetics] ESBuild transformation complete`);
       console.log(`  JS Output first 300 chars: ${jsResult.code.substring(0, 300)}...`);
     }
 
@@ -268,11 +293,11 @@ async function transformPSRFile(
     };
   } catch (error) {
     const duration = (performance.now() - startTime).toFixed(2);
-    console.error(`[pulsar] PSR Error transforming ${fileName} (after ${duration}ms):`, error);
+    console.error(`[synetics] PSR Error transforming ${fileName} (after ${duration}ms):`, error);
 
     if (debug && error instanceof Error) {
-      console.error(`[pulsar] Error stack:`, error.stack);
-      console.error(`[pulsar] Error details:`, {
+      console.error(`[synetics] Error stack:`, error.stack);
+      console.error(`[synetics] Error details:`, {
         message: error.message,
         name: error.name,
       });
@@ -299,8 +324,8 @@ async function transformPSRFile(
 
     const errorComponentCode = `
 /* Pulsar v${Date.now()} - PSR Transform failed */
-console.error('[Pulsar] Transformation failed for ' + ${jsonFileName});
-console.error('[Pulsar] Error:', ${jsonError});
+console.error('[Synetics] Transformation failed for ' + ${jsonFileName});
+console.error('[Synetics] Error:', ${jsonError});
 
 export default function() {
   const div = document.createElement('div');
@@ -318,7 +343,7 @@ export default function() {
 
     // Log the generated error component code for debugging
     if (debug) {
-      console.log('[pulsar] ERROR COMPONENT CODE:', errorComponentCode);
+      console.log('[synetics] ERROR COMPONENT CODE:', errorComponentCode);
     }
 
     // Transform with esbuild to ensure syntax validity (optional but good practice)
@@ -329,7 +354,7 @@ export default function() {
       });
       return { code: result.code, map: result.map };
     } catch (e) {
-      console.error('[pulsar] Failed to transform error component code:', e);
+      console.error('[synetics] Failed to transform error component code:', e);
       // Fallback to raw string if even esbuild fails on it
       return { code: errorComponentCode, map: null };
     }
@@ -337,17 +362,17 @@ export default function() {
 }
 
 /**
- * Vite plugin for pulsar framework
+ * Vite plugin for Synetics framework
  * Transforms TSX syntax into direct DOM manipulation using the pulsar transformer
  * Now with enhanced dependency resolution for component imports
  *
  * @example
  * ```ts
  * import { defineConfig } from 'vite'
- * import { pulsarPlugin } from '@pulsar/vite-plugin'
+ * import { syneticsPlugin } from '@pulsar/vite-plugin'
  *
  * export default defineConfig({
- *   plugins: [pulsarPlugin()]
+ *   plugins: [syneticsPlugin()]
  * })
  * ```
  */
@@ -377,7 +402,7 @@ export interface PulsarPluginOptions {
   enableDependencyResolution?: boolean;
 
   /**
-   * Enable Pulsar DevTools browser overlay in dev mode
+   * Enable Synetics DevTools browser overlay in dev mode
    * Injects floating panel + posts events to VS Code tracer on port 9339
    * @default true
    */
@@ -388,26 +413,26 @@ const PLUGIN_VERSION = Date.now(); // Version changes on every server restart
 
 /**
  * Generic PSR module declaration template
- * This provides TypeScript support for importing .psr files
+ * This provides TypeScript support for importing .syn files
  */
 const PSR_TYPE_DECLARATION = `/**
- * TypeScript declarations for .psr files
- * Auto-generated by @pulsar-framework/vite-plugin
+ * TypeScript declarations for .syn files
+ * Auto-generated by @synetics/vite-plugin
  * 
- * Wildcard allows any named exports from .psr files.
- * Use: import { ComponentName } from './file.psr'
+ * Wildcard allows any named exports from .syn files.
+ * Use: import { ComponentName } from './file.syn'
  */
-declare module '*.psr';
+declare module '*.syn';
 `;
 
-function pulsarPlugin(options: PulsarPluginOptions = {}): Plugin {
+function syneticsPlugin(options: PulsarPluginOptions = {}): Plugin {
   const { debug = false, autoInjectHMR = true, devtools = true } = options;
 
   let projectRoot = '';
   let isDevMode = true;
 
   return {
-    name: 'pulsar-vite-plugin',
+    name: 'synetics-vite-plugin',
     enforce: 'pre',
 
     async configResolved(config) {
@@ -445,10 +470,10 @@ function pulsarPlugin(options: PulsarPluginOptions = {}): Plugin {
       const fs = await import('fs/promises');
       const path = await import('path');
 
-      // If source is .psr, resolve it NOW (don't let Vite handle it)
-      if (cleanSource.endsWith('.psr')) {
-        console.log(`[pulsar] resolveId: Resolving .psr "${cleanSource}"`);
-        console.log(`[pulsar]   From: ${importer}`);
+      // If source is .syn, resolve it NOW (don't let Vite handle it)
+      if (cleanSource.endsWith('.syn')) {
+        console.log(`[synetics] resolveId: Resolving .syn "${cleanSource}"`);
+        console.log(`[synetics]   From: ${importer}`);
 
         try {
           const importerDir = path.dirname(importer);
@@ -457,7 +482,7 @@ function pulsarPlugin(options: PulsarPluginOptions = {}): Plugin {
           // Check if file exists
           await fs.access(psrPath);
 
-          console.log(`[pulsar]   ✓ Resolved to: ${psrPath}`);
+          console.log(`[synetics]   ✓ Resolved to: ${psrPath}`);
 
           return psrPath;
         } catch {
@@ -465,11 +490,11 @@ function pulsarPlugin(options: PulsarPluginOptions = {}): Plugin {
         }
       }
 
-      // Check if this is a .js import that should resolve to .psr
-      // (Transformer converts .psr imports to .js for browser compatibility)
+      // Check if this is a .js import that should resolve to .syn
+      // (Transformer converts .syn imports to .js for browser compatibility)
       const isTransformedJsImport = cleanSource.endsWith('.js');
 
-      // Skip if source already has another extension (but allow .js to pass through for .psr resolution)
+      // Skip if source already has another extension (but allow .js to pass through for .syn resolution)
       if (!isTransformedJsImport && /\.(tsx?|jsx?|mjs|cjs|json|css|scss|less)$/.test(cleanSource)) {
         return null;
       }
@@ -478,26 +503,26 @@ function pulsarPlugin(options: PulsarPluginOptions = {}): Plugin {
         // Resolve relative to importer
         const importerDir = path.dirname(importer);
 
-        // Determine the .psr path to check
-        // If source ends with .js, replace it with .psr (transformed imports)
-        // Otherwise, append .psr (extensionless imports)
+        // Determine the .syn path to check
+        // If source ends with .js, replace it with .syn (transformed imports)
+        // Otherwise, append .syn (extensionless imports)
         const psrSource = cleanSource.endsWith('.js')
-          ? cleanSource.replace(/\.js$/, '.psr')
-          : `${cleanSource}.psr`;
+          ? cleanSource.replace(/\.js$/, '.syn')
+          : `${cleanSource}.syn`;
         const possiblePsrPath = path.resolve(importerDir, psrSource);
 
-        // Check if .psr file exists
+        // Check if .syn file exists
         await fs.access(possiblePsrPath);
 
         if (debug) {
-          console.log(`[pulsar] resolveId: Found .psr file for import "${cleanSource}"`);
-          console.log(`[pulsar]   Importer: ${importer}`);
-          console.log(`[pulsar]   Resolved: ${possiblePsrPath}`);
+          console.log(`[synetics] resolveId: Found .syn file for import "${cleanSource}"`);
+          console.log(`[synetics]   Importer: ${importer}`);
+          console.log(`[synetics]   Resolved: ${possiblePsrPath}`);
         }
 
         return possiblePsrPath;
       } catch {
-        // .psr file doesn't exist, let Vite try normal resolution
+        // .syn file doesn't exist, let Vite try normal resolution
         return null;
       }
     },
@@ -508,22 +533,22 @@ function pulsarPlugin(options: PulsarPluginOptions = {}): Plugin {
         return { code: DEVTOOLS_CLIENT_CODE, map: null };
       }
 
-      // Use load hook instead of transform to process .psr files BEFORE Vite's import analysis
+      // Use load hook instead of transform to process .syn files BEFORE Vite's import analysis
       // This prevents "Failed to parse source for import analysis" errors
 
       // Strip query parameters before checking extension
       const [cleanId, query] = id.split('?', 2);
 
-      // ALWAYS log .psr requests to debug
-      if (cleanId.endsWith('.psr')) {
+      // ALWAYS log .syn requests to debug
+      if (cleanId.endsWith('.syn')) {
         const fileName = cleanId.split('/').pop() || cleanId.split('\\').pop() || cleanId;
-        console.log(`[pulsar] load() called for: ${fileName}`);
-        console.log(`[pulsar]   Full ID: ${id}`);
-        console.log(`[pulsar]   Clean ID: ${cleanId}`);
-        console.log(`[pulsar]   Query: ${query || 'none'}`);
+        console.log(`[synetics] load() called for: ${fileName}`);
+        console.log(`[synetics]   Full ID: ${id}`);
+        console.log(`[synetics]   Clean ID: ${cleanId}`);
+        console.log(`[synetics]   Query: ${query || 'none'}`);
       }
 
-      if (!cleanId.endsWith('.psr')) {
+      if (!cleanId.endsWith('.syn')) {
         return null;
       }
 
@@ -531,16 +556,20 @@ function pulsarPlugin(options: PulsarPluginOptions = {}): Plugin {
       const fs = await import('fs/promises');
       const path = await import('path');
 
-      // If ID starts with /, it's relative to the project root
-      let resolvedPath = cleanId;
-      if (resolvedPath.startsWith('/')) {
-        resolvedPath = resolvedPath.substring(1); // Remove leading /
+      let absolutePath: string;
+      if (path.isAbsolute(cleanId)) {
+        absolutePath = cleanId;
+      } else {
+        // If it starts with / but is not absolute (e.g. vite's special resolution), or it's just relative
+        let resolvedPath = cleanId;
+        if (resolvedPath.startsWith('/')) {
+          resolvedPath = resolvedPath.substring(1); // Remove leading /
+        }
+        absolutePath = path.resolve(projectRoot, resolvedPath);
       }
 
-      const absolutePath = path.resolve(projectRoot, resolvedPath);
-
       if (debug) {
-        console.log(`[pulsar]   Resolved: ${absolutePath}`);
+        console.log(`[synetics]   Resolved: ${absolutePath}`);
       }
 
       try {
@@ -548,29 +577,29 @@ function pulsarPlugin(options: PulsarPluginOptions = {}): Plugin {
         // Transform PSR file to TypeScript before Vite analyzes imports
         return await transformPSRFile(code, absolutePath, debug);
       } catch (error) {
-        console.error(`[pulsar] PSR Error reading file ${cleanId}:`, error);
+        console.error(`[synetics] PSR Error reading file ${cleanId}:`, error);
         return null;
       }
     },
 
     async transform(code: string, id: string) {
-      // CRITICAL: Transform .psr files if load() hook didn't catch them
-      // This is a fallback for when Vite routes .psr files through transform instead of load
+      // CRITICAL: Transform .syn files if load() hook didn't catch them
+      // This is a fallback for when Vite routes .syn files through transform instead of load
       const [cleanId] = id.split('?', 2);
-      if (cleanId.endsWith('.psr')) {
+      if (cleanId.endsWith('.syn')) {
         // GUARD: Skip if code is already transformed (prevent double transformation)
         const isAlreadyTransformed =
-          /import\s+{[^}]*\$REGISTRY[^}]*}\s+from\s+['"]@pulsar-framework\/pulsar\.dev['"]/.test(
+          /import\s+{[^}]*\$REGISTRY[^}]*}\s+from\s+['"]@synetics\/pulsar\.dev['"]/.test(
             code
           ) ||
-          /import\s+{[^}]*t_element[^}]*}\s+from\s+['"]@pulsar-framework\/pulsar\.dev['"]/.test(
+          /import\s+{[^}]*t_element[^}]*}\s+from\s+['"]@synetics\/pulsar\.dev['"]/.test(
             code
           );
 
         if (isAlreadyTransformed) {
           if (debug) {
             const fileName = cleanId.split('/').pop() || cleanId.split('\\').pop() || cleanId;
-            console.log(`[pulsar] transform() hook: ${fileName} already transformed, skipping`);
+            console.log(`[synetics] transform() hook: ${fileName} already transformed, skipping`);
           }
           return null; // Let Vite use the already-transformed code
         }
@@ -578,7 +607,7 @@ function pulsarPlugin(options: PulsarPluginOptions = {}): Plugin {
         if (debug) {
           const fileName = cleanId.split('/').pop() || cleanId.split('\\').pop() || cleanId;
           console.log(
-            `[pulsar] transform() hook triggered for: ${fileName} (FALLBACK - load() didn't catch it)`
+            `[synetics] transform() hook triggered for: ${fileName} (FALLBACK - load() didn't catch it)`
           );
         }
         // Transform the PSR file
@@ -589,7 +618,7 @@ function pulsarPlugin(options: PulsarPluginOptions = {}): Plugin {
       if (autoInjectHMR && isDevMode && /main\.(ts|tsx|js|jsx)$/.test(id)) {
         // Check if file contains pulse() call and has PSR component import
         const hasPulse = /\bpulse\s*\(/.test(code);
-        const psrImportMatch = code.match(/import\s+{([^}]+)}\s+from\s+['"](.+\.psr)['"]/);
+        const psrImportMatch = code.match(/import\s+{([^}]+)}\s+from\s+['"](.+\.syn)['"]/);
 
         if (hasPulse && psrImportMatch) {
           const componentNames = psrImportMatch[1]
@@ -606,21 +635,25 @@ function pulsarPlugin(options: PulsarPluginOptions = {}): Plugin {
             const componentName = componentNames[0];
 
             const hmrCode = `
-// Auto-injected HMR by pulsar-vite-plugin
+// Auto-injected HMR by synetics-vite-plugin
 if (import.meta.hot) {
   import.meta.hot.accept('${psrPath}', async (newModule) => {
-    if (newModule && typeof app !== 'undefined') {
-      await app.unmount();
-      await app.mount(newModule.${componentName}());
+    if (newModule) {
+      const { getCurrentAppRoot } = await import('@synetics/synetics.dev');
+      const app = getCurrentAppRoot();
+      if (app) {
+        await app.unmount();
+        await app.mount(newModule.${componentName}());
+      }
     }
   });
   import.meta.hot.accept();
 }`;
 
             if (debug) {
-              console.log(`[pulsar] Auto-injecting HMR for ${id}`);
-              console.log(`[pulsar]   Component: ${componentName}`);
-              console.log(`[pulsar]   PSR file: ${psrPath}`);
+              console.log(`[synetics] Auto-injecting HMR for ${id}`);
+              console.log(`[synetics]   Component: ${componentName}`);
+              console.log(`[synetics]   PSR file: ${psrPath}`);
             }
 
             return {
@@ -635,19 +668,19 @@ if (import.meta.hot) {
     },
 
     handleHotUpdate(ctx: HmrContext) {
-      // When a .psr file changes, invalidate the module and all its importers
-      if (ctx.file.endsWith('.psr')) {
-        console.log(`[pulsar] HMR: PSR file changed - ${ctx.file}`);
-        console.log(`[pulsar] HMR: Found ${ctx.modules.length} modules`);
+      // When a .syn file changes, invalidate the module and all its importers
+      if (ctx.file.endsWith('.syn')) {
+        console.log(`[synetics] HMR: PSR file changed - ${ctx.file}`);
+        console.log(`[synetics] HMR: Found ${ctx.modules.length} modules`);
 
         // Invalidate all modules in the update context
         ctx.modules.forEach((module) => {
-          console.log(`[pulsar] HMR: Invalidating module - ${module.url}`);
+          console.log(`[synetics] HMR: Invalidating module - ${module.url}`);
           ctx.server.moduleGraph.invalidateModule(module);
         });
 
         if (debug) {
-          console.log(`[pulsar] HMR: PSR file changed, invalidating ${ctx.file}`);
+          console.log(`[synetics] HMR: PSR file changed, invalidating ${ctx.file}`);
         }
 
         // Return modules to update (let Vite handle the HMR)
@@ -663,7 +696,7 @@ if (import.meta.hot) {
  *
  * @remarks
  * This is a fallback mechanism. In most cases, the types from
- * @pulsar-framework/pulsar.dev are automatically available.
+ * @synetics/synetics.dev are automatically available.
  * This function only creates a local file if:
  * 1. The framework types aren't being picked up by TypeScript
  * 2. The user wants a local copy they can customize
@@ -683,45 +716,45 @@ async function ensurePSRTypeDeclarations(projectRoot: string, debug: boolean): P
     try {
       await fs.access(typesFile);
       if (debug) {
-        console.log('[pulsar] PSR type declarations already exist:', typesFile);
+        console.log('[synetics] PSR type declarations already exist:', typesFile);
       }
       return;
     } catch {
       // File doesn't exist, create it
     }
 
-    // Check if @pulsar-framework/pulsar.dev is installed
+    // Check if @synetics/synetics.dev is installed
     // If it is, types should be automatic - but we'll create a local copy anyway
     // as a fallback or for users who want to customize
     try {
       await fs.mkdir(typesDir, { recursive: true });
       await fs.writeFile(typesFile, PSR_TYPE_DECLARATION, 'utf-8');
 
-      console.log('[pulsar] ✅ Created PSR type declarations: src/types/psr-modules.d.ts');
-      console.log('[pulsar] 💡 This enables TypeScript support for .psr file imports');
+      console.log('[synetics] ✅ Created PSR type declarations: src/types/psr-modules.d.ts');
+      console.log('[synetics] 💡 This enables TypeScript support for .syn file imports');
 
       if (debug) {
         console.log(
-          '[pulsar] Note: @pulsar-framework/pulsar.dev includes these types automatically.'
+          '[synetics] Note: @synetics/synetics.dev includes these types automatically.'
         );
-        console.log('[pulsar] This file exists as a fallback or for customization.');
+        console.log('[synetics] This file exists as a fallback or for customization.');
       }
     } catch (error) {
       if (debug) {
-        console.warn('[pulsar] ⚠️ Could not create PSR type declarations:', error);
-        console.warn('[pulsar] TypeScript support will rely on @pulsar-framework/pulsar.dev types');
+        console.warn('[synetics] ⚠️ Could not create PSR type declarations:', error);
+        console.warn('[synetics] TypeScript support will rely on @synetics/synetics.dev types');
       }
     }
   } catch (error) {
     // Silent fail - not critical, types should come from framework package
     if (debug) {
-      console.warn('[pulsar] Type declaration check failed:', error);
+      console.warn('[synetics] Type declaration check failed:', error);
     }
   }
 }
 
 // Named export for convenience
-export { pulsarPlugin };
+export { syneticsPlugin };
 
 // Default export
-export default pulsarPlugin;
+export default syneticsPlugin;

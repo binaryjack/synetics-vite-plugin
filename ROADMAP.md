@@ -108,4 +108,4 @@
 
 ---
 
-Track issues: [GitHub Issues](https://github.com/binaryjack/pulsar-vite-plugin/issues)
+Track issues: [GitHub Issues](https://github.com/binaryjack/synetics-vite-plugin/issues)
