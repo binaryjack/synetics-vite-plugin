@@ -1,4 +1,4 @@
-# Pulsar Vite Plugin Roadmap
+# Synetics Vite Plugin Roadmap
 
 **Current Version**: v0.7.0-alpha  
 **Target Release**: v1.0.0 (Q2 2026)
@@ -104,7 +104,7 @@
 
 - **Vite**: 6.x (current), 5.x (deprecated)
 - **Node**: >= 18
-- **Pulsar**: >= 0.7.0
+- **Synetics**: >= 0.7.0
 
 ---
 

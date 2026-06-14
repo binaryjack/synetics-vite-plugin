@@ -1,8 +1,8 @@
-<img src="https://raw.githubusercontent.com/binaryjack/synetics-design-system/main/art-kit/SVG/pulsar-logo.svg" alt="Pulsar" width="400"/>
+<img src="https://raw.githubusercontent.com/binaryjack/synetics-design-system/main/art-kit/SVG/pulsar-logo.svg" alt="Synetics" width="400"/>
 
-# @pulsar/vite-plugin
+# @synetics/vite-plugin
 
-Vite plugin that integrates the Pulsar transformer into your build process, converting TSX syntax into direct DOM manipulation.
+Vite plugin that integrates the Synetics transformer into your build process, converting TSX syntax into direct DOM manipulation.
 
 <p align="center">
   <strong><a href="https://www.linkedin.com/in/tadeopiana/">follow me</a></strong>
@@ -16,12 +16,12 @@ Vite plugin that integrates the Pulsar transformer into your build process, conv
 - ✅ **TypeScript support** - Full type checking during build
 - ✅ **Development warnings** - Detects untransformed JSX in dev mode
 - ✅ **Production optimized** - Strips debug code in production builds
-- ✅ Seamless integration with Pulsar transformer
+- ✅ Seamless integration with Synetics transformer
 
 ## Installation
 
 ```bash
-pnpm add -D @pulsar/vite-plugin
+pnpm add -D @synetics/vite-plugin
 ```
 
 ## Usage
@@ -30,7 +30,7 @@ Add the plugin to your `vite.config.ts`:
 
 ```typescript
 import { defineConfig } from 'vite';
-import { syneticsPlugin } from '@pulsar/vite-plugin';
+import { syneticsPlugin } from '@synetics/vite-plugin';
 
 export default defineConfig({
   plugins: [syneticsPlugin()],
@@ -39,7 +39,7 @@ export default defineConfig({
 
 That's it! The plugin will automatically:
 
-1. Transform all `.tsx` files using the Pulsar transformer
+1. Transform all `.tsx` files using the Synetics transformer
 2. Convert JSX into direct DOM operations
 3. Enable fine-grained reactive updates
 4. Provide fast HMR during development
@@ -50,7 +50,7 @@ The plugin integrates into Vite's transform pipeline:
 
 1. **File Detection**: Identifies `.tsx` files
 2. **TypeScript Compilation**: Creates TypeScript program with JSX preserved
-3. **Transformation**: Applies Pulsar transformer to convert JSX → DOM
+3. **Transformation**: Applies Synetics transformer to convert JSX → DOM
 4. **Validation**: Checks for any remaining JSX nodes (dev mode)
 5. **Output**: Returns transformed JavaScript code
 
@@ -88,7 +88,7 @@ const Counter = () => {
 The plugin works with zero configuration, but offers several options for customization:
 
 ```typescript
-export interface PulsarPluginOptions {
+export interface SyneticsPluginOptions {
   /**
    * Enable debug logging
    * @default false
@@ -327,7 +327,7 @@ export default defineConfig({
 
 ```typescript
 import { defineConfig } from 'vite';
-import { syneticsPlugin } from '@pulsar/vite-plugin';
+import { syneticsPlugin } from '@synetics/vite-plugin';
 import { resolve } from 'path';
 
 export default defineConfig({
@@ -343,7 +343,7 @@ export default defineConfig({
   esbuild: {
     jsxFactory: 'jsx',
     jsxFragment: 'Fragment',
-    jsxInject: `import { jsx, Fragment } from 'pulsar/jsx-runtime'`,
+    jsxInject: `import { jsx, Fragment } from '@synetics/synetics.dev/jsx-runtime'`,
   },
 });
 ```
@@ -380,7 +380,7 @@ If you see JSX in the output:
 The transformer removes React completely. If you see React:
 
 1. Check your imports - remove `import React from 'react'`
-2. Use Pulsar's JSX runtime: `import { jsx } from 'pulsar/jsx-runtime'`
+2. Use Synetics's JSX runtime: `import { jsx } from '@synetics/synetics.dev/jsx-runtime'`
 3. Ensure no other plugins are adding React
 
 ### Type Errors
@@ -429,16 +429,16 @@ The plugin is designed for optimal build performance:
 - **Module federation** - Support for micro-frontends
 - **Production diagnostics** - Optional runtime performance tracking
 
-## Pulsar Ecosystem
+## Synetics Ecosystem
 
 | Package                                                                     | Description                                 | Status    |
 | --------------------------------------------------------------------------- | ------------------------------------------- | --------- |
 | [synetics.dev](https://github.com/binaryjack/synetics.dev)                      | Core framework with signal-based reactivity | ✅ Active |
-| [@pulsar/ui](https://github.com/binaryjack/synetics-ui.dev)                   | UI component library                        | ✅ Active |
-| [@pulsar/design-tokens](https://github.com/binaryjack/synetics-design-system) | Design tokens & art-kit                     | ✅ Active |
-| [@pulsar/transformer](https://github.com/binaryjack/synetics-transformer)     | JSX to DOM compiler                         | ✅ Active |
-| [@pulsar/vite-plugin](https://github.com/binaryjack/synetics-vite-plugin)     | Vite integration                            | ✅ Active |
-| [@pulsar/demo](https://github.com/binaryjack/synetics-demo)                   | Example applications                        | ✅ Active |
+| [@synetics/ui](https://github.com/binaryjack/synetics-ui.dev)                   | UI component library                        | ✅ Active |
+| [@synetics/design-tokens](https://github.com/binaryjack/synetics-design-system) | Design tokens & art-kit                     | ✅ Active |
+| [@synetics/transformer](https://github.com/binaryjack/synetics-transformer)     | JSX to DOM compiler                         | ✅ Active |
+| [@synetics/vite-plugin](https://github.com/binaryjack/synetics-vite-plugin)     | Vite integration                            | ✅ Active |
+| [@synetics/demo](https://github.com/binaryjack/synetics-demo)                   | Example applications                        | ✅ Active |
 
 ## Contributing
 
@@ -462,7 +462,7 @@ We welcome contributions! To get started:
    ```bash
    pnpm link --global
    cd ../your-project
-   pnpm link @pulsar/vite-plugin --global
+   pnpm link @synetics/vite-plugin --global
    ```
 
 4. **Test your changes**
@@ -474,7 +474,7 @@ We welcome contributions! To get started:
 ### Development Tips
 
 - **Plugin structure**: Check [vite-plugin-temp/src/index.ts](./vite-plugin-temp/src/index.ts)
-- **Testing**: Use [@pulsar/demo](../synetics-demo) as a test bed
+- **Testing**: Use [@synetics/demo](../synetics-demo) as a test bed
 - **Debugging**: Add `console.log` statements in the `transform` function
 - **Vite API**: Reference [Vite Plugin API docs](https://vitejs.dev/guide/api-plugin.html)
 
@@ -486,4 +486,4 @@ See [LICENSE](../synetics.dev/LICENSE) file for details.
 
 ---
 
-**Connect:** [LinkedIn](https://www.linkedin.com/in/tadeopiana/) • **Explore:** [Pulsar Ecosystem](#pulsar-ecosystem)
+**Connect:** [LinkedIn](https://www.linkedin.com/in/tadeopiana/) • **Explore:** [Synetics Ecosystem](#pulsar-ecosystem)
