@@ -68,11 +68,11 @@ const DEVTOOLS_CLIENT_CODE = `
     events.push(event);
     if (events.length > 500) events.shift();
     if (visible) appendRow(event);
-    fetch('http://localhost:' + TRACE_PORT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ events: [event], source: 'browser', sessionId: SESSION_ID })
-    }).catch(function() {});
+    // fetch('http://localhost:' + TRACE_PORT, {
+    //   method: 'POST',
+    //   headers: { 'Content-Type': 'application/json' },
+    //   body: JSON.stringify({ events: [event], source: 'browser', sessionId: SESSION_ID })
+    // }).catch(function() {});
   }
 
   document.addEventListener('DOMContentLoaded', function() {
