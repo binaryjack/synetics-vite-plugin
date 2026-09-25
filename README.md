@@ -1,5 +1,3 @@
-<img src="https://raw.githubusercontent.com/binaryjack/synetics-design-system/main/art-kit/SVG/pulsar-logo.svg" alt="Synetics" width="400"/>
-
 # @synetics/vite-plugin
 
 Vite plugin that integrates the Synetics transformer into your build process, converting TSX syntax into direct DOM manipulation.
