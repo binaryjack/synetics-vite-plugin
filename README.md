@@ -298,7 +298,7 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          vendor: ['pulsar'],
+          vendor: ['@synetics/synetics.dev'],
         },
       },
     },
@@ -314,7 +314,7 @@ export default defineConfig({
     "jsx": "preserve",
     "jsxFactory": "jsx",
     "jsxFragmentFactory": "Fragment",
-    "jsxImportSource": "pulsar"
+    "jsxImportSource": "@synetics/synetics.dev"
   }
 }
 ```
@@ -336,7 +336,7 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    include: ['pulsar', 'pulsar/reactivity', 'pulsar/hooks', 'pulsar/jsx-runtime'],
+    include: ['@synetics/synetics.dev'],
   },
   esbuild: {
     jsxFactory: 'jsx',
@@ -385,8 +385,8 @@ The transformer removes React completely. If you see React:
 
 If TypeScript complains about JSX:
 
-1. Add `pulsar.d.ts` to your project for JSX type definitions
-2. Include `"types": ["pulsar"]` in `tsconfig.json`
+1. Add `synetics.d.ts` to your project for JSX type definitions
+2. Include `"types": ["@synetics/synetics.dev"]` in `tsconfig.json`
 3. Restart TypeScript server in your IDE
 
 ## Performance
@@ -484,4 +484,4 @@ See [LICENSE](../synetics.dev/LICENSE) file for details.
 
 ---
 
-**Connect:** [LinkedIn](https://www.linkedin.com/in/tadeopiana/) • **Explore:** [Synetics Ecosystem](#pulsar-ecosystem)
+**Connect:** [LinkedIn](https://www.linkedin.com/in/tadeopiana/) • **Explore:** [Synetics Ecosystem](#synetics-ecosystem)
